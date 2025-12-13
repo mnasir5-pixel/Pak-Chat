@@ -29,7 +29,7 @@ export class ChatService {
 
     // 1. Initialize Provider
     if (this.provider === 'gemini') {
-      const key = CONFIG.GEMINI_API_KEY || process.env.API_KEY || 'AIzaSyCy-lvF9iGZ1SidX2_KsihkLRyB_U8Qp3o';
+      const key = CONFIG.GEMINI_API_KEY || process.env.API_KEY || 'AIzaSyAhe1AKh8QgMdK7GKBaAwB8qg8OUQSsQC4';
       if (key) {
         this.geminiClient = new GoogleGenAI({ apiKey: key });
         this.initGeminiSession();
@@ -43,7 +43,7 @@ export class ChatService {
 
   // --- STATIC HELPER FOR TRANSLATION ---
   public static async translateText(text: string, targetLanguage: string): Promise<string> {
-      const key = CONFIG.GEMINI_API_KEY || process.env.API_KEY || 'AIzaSyCy-lvF9iGZ1SidX2_KsihkLRyB_U8Qp3o';
+      const key = CONFIG.GEMINI_API_KEY || process.env.API_KEY || 'AIzaSyAhe1AKh8QgMdK7GKBaAwB8qg8OUQSsQC4';
       // Translation always uses Gemini Flash for speed/cost, regardless of main provider
       if (!key) return text; 
       
