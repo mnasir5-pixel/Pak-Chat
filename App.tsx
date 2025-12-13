@@ -330,33 +330,34 @@ export default function App() {
       setPermissionModalType(null);
   };
 
-  // --- NAVIGATION HANDLER (Smart Resume) ---
+  // --- NAVIGATION HANDLER (Forced New Session on Return) ---
   const handleNavigation = (view: typeof currentView) => {
+      // If switching main views (e.g. Chat -> History -> Chat), reset the session to create a new history entry next time.
+      if (view !== currentView) {
+          // Resetting IDs means the next message will create a NEW session ID.
+          // The previous session is already saved in the `sessions` state/local storage.
+          setCurrentSessionId(null);
+          setCurrentTutorSessionId(null);
+          setCurrentEnglishSessionId(null);
+          setCurrentStudySessionId(null);
+
+          // Reset UI to initial state
+          setMessages([WELCOME_MESSAGE]);
+          setTutorMessages([TUTOR_START_MESSAGE]);
+          setEnglishMessages([ENGLISH_START_MESSAGE]);
+          setStudyMessages([]); 
+          // Note: Study messages reset, but if we select a subject again, it initializes.
+          
+          if (chatServiceRef.current) chatServiceRef.current.startChatWithHistory([]);
+          if (tutorServiceRef.current) tutorServiceRef.current.startChatWithHistory([]);
+          if (englishServiceRef.current) englishServiceRef.current.startChatWithHistory([]);
+      }
+
       setCurrentView(view);
       
-      // ONLY close sidebar automatically on mobile devices (width < 768px)
-      // On desktop, it remains open for an adjustable, persistent sidebar experience
       if (window.innerWidth < 768) {
           setIsSidebarOpen(false);
       }
-
-      // Auto-Resume logic: If entering a tutor view and no active session is loaded, try to find the last one.
-      const tryResume = (type: string, currentId: string | null, loadFn: (id: string, t: string) => void) => {
-          if (!currentId) {
-              // Find latest session of this type
-              const lastSession = sessions
-                  .filter(s => s.type === type)
-                  .sort((a, b) => b.timestamp - a.timestamp)[0];
-              
-              if (lastSession) {
-                  loadFn(lastSession.id, type as any);
-              }
-          }
-      };
-
-      if (view === 'chinese-tutor') tryResume('tutor', currentTutorSessionId, handleLoadSession);
-      if (view === 'english-tutor') tryResume('english-tutor', currentEnglishSessionId, handleLoadSession);
-      // Study school is tricky because it depends on the subject, we'll let the dashboard handle it.
   };
 
   const getPromptWithConfig = (content: string) => {
@@ -688,7 +689,7 @@ export default function App() {
           onTranslateLanguageChange={handleTranslateLanguageChange}
           currentTheme={theme}
           onThemeChange={setTheme}
-          onBack={() => setCurrentView('chat')} 
+          onBack={() => handleNavigation('chat')} 
           playbackEnabled={playbackEnabled}
           onPlaybackChange={handlePlaybackChange}
           micAccess={micAccess}
@@ -760,3 +761,4 @@ export default function App() {
     </div>
   );
 }
+
