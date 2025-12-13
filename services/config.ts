@@ -15,7 +15,7 @@ export const CONFIG = {
   // Get your key here: https://aistudio.google.com/
   // ---------------------------------------------------------------------------
   // Important: If process.env.API_KEY is not working, paste your key string directly below.
-  GEMINI_API_KEY: "AIzaSyCy-lvF9iGZ1SidX2_KsihkLRyB_U8Qp3o", 
+  GEMINI_API_KEY: "AIzaSyAhe1AKh8QgMdK7GKBaAwB8qg8OUQSsQC4", 
 
   // ---------------------------------------------------------------------------
   // OPENAI (GPT-4o)
