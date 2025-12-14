@@ -330,33 +330,34 @@ export default function App() {
       setPermissionModalType(null);
   };
 
-  // --- NAVIGATION HANDLER (Smart Resume) ---
+  // --- NAVIGATION HANDLER (Forced New Session on Return) ---
   const handleNavigation = (view: typeof currentView) => {
+      // If switching main views (e.g. Chat -> History -> Chat), reset the session to create a new history entry next time.
+      if (view !== currentView) {
+          // Resetting IDs means the next message will create a NEW session ID.
+          // The previous session is already saved in the `sessions` state/local storage.
+          setCurrentSessionId(null);
+          setCurrentTutorSessionId(null);
+          setCurrentEnglishSessionId(null);
+          setCurrentStudySessionId(null);
+
+          // Reset UI to initial state
+          setMessages([WELCOME_MESSAGE]);
+          setTutorMessages([TUTOR_START_MESSAGE]);
+          setEnglishMessages([ENGLISH_START_MESSAGE]);
+          setStudyMessages([]); 
+          // Note: Study messages reset, but if we select a subject again, it initializes.
+          
+          if (chatServiceRef.current) chatServiceRef.current.startChatWithHistory([]);
+          if (tutorServiceRef.current) tutorServiceRef.current.startChatWithHistory([]);
+          if (englishServiceRef.current) englishServiceRef.current.startChatWithHistory([]);
+      }
+
       setCurrentView(view);
       
-      // ONLY close sidebar automatically on mobile devices (width < 768px)
-      // On desktop, it remains open for an adjustable, persistent sidebar experience
       if (window.innerWidth < 768) {
           setIsSidebarOpen(false);
       }
-
-      // Auto-Resume logic: If entering a tutor view and no active session is loaded, try to find the last one.
-      const tryResume = (type: string, currentId: string | null, loadFn: (id: string, t: string) => void) => {
-          if (!currentId) {
-              // Find latest session of this type
-              const lastSession = sessions
-                  .filter(s => s.type === type)
-                  .sort((a, b) => b.timestamp - a.timestamp)[0];
-              
-              if (lastSession) {
-                  loadFn(lastSession.id, type as any);
-              }
-          }
-      };
-
-      if (view === 'chinese-tutor') tryResume('tutor', currentTutorSessionId, handleLoadSession);
-      if (view === 'english-tutor') tryResume('english-tutor', currentEnglishSessionId, handleLoadSession);
-      // Study school is tricky because it depends on the subject, we'll let the dashboard handle it.
   };
 
   const getPromptWithConfig = (content: string) => {
@@ -428,7 +429,14 @@ export default function App() {
     if (!activeSessionId) {
       const newId = Date.now().toString();
       const newTitle = content.trim().length > 30 ? content.trim().slice(0, 30) + '...' : (content.trim() || 'File Attachment');
-      const newSession: ChatSession = { id: newId, type: 'chat', title: newTitle, messages: [WELCOME_MESSAGE], timestamp: Date.now() };
+      const newSession: ChatSession = { 
+          id: newId, 
+          type: 'chat', 
+          title: newTitle, 
+          messages: [WELCOME_MESSAGE], 
+          timestamp: Date.now(),
+          createdAt: Date.now() // Add creation time
+      };
       setSessions(prev => [newSession, ...prev]);
       setCurrentSessionId(newId);
       activeSessionId = newId;
@@ -476,7 +484,7 @@ export default function App() {
     if (!content.trim() || tutorLoadingState === 'streaming') return;
     if (!currentTutorSessionId) {
       const newId = Date.now().toString();
-      const newSession: ChatSession = { id: newId, type: 'tutor', title: 'Chinese Lesson', messages: [TUTOR_START_MESSAGE], timestamp: Date.now() };
+      const newSession: ChatSession = { id: newId, type: 'tutor', title: 'Chinese Lesson', messages: [TUTOR_START_MESSAGE], timestamp: Date.now(), createdAt: Date.now() };
       setSessions(prev => [newSession, ...prev]);
       setCurrentTutorSessionId(newId);
       setTutorMessages([TUTOR_START_MESSAGE]);
@@ -508,7 +516,7 @@ export default function App() {
     if (!content.trim() || englishLoadingState === 'streaming') return;
     if (!currentEnglishSessionId) {
       const newId = Date.now().toString();
-      const newSession: ChatSession = { id: newId, type: 'english-tutor', title: 'English Lesson', messages: [ENGLISH_START_MESSAGE], timestamp: Date.now() };
+      const newSession: ChatSession = { id: newId, type: 'english-tutor', title: 'English Lesson', messages: [ENGLISH_START_MESSAGE], timestamp: Date.now(), createdAt: Date.now() };
       setSessions(prev => [newSession, ...prev]);
       setCurrentEnglishSessionId(newId);
       setEnglishMessages([ENGLISH_START_MESSAGE]);
@@ -559,7 +567,7 @@ export default function App() {
       if (!currentStudySessionId) {
           const newId = Date.now().toString();
           const subjName = customSubjects.find(s => s.id === activeStudySubject)?.name || activeStudySubject;
-          const newSession: ChatSession = { id: newId, type: 'study-school', title: `${subjName} Class`, subjectId: activeStudySubject, messages: studyMessages, timestamp: Date.now() };
+          const newSession: ChatSession = { id: newId, type: 'study-school', title: `${subjName} Class`, subjectId: activeStudySubject, messages: studyMessages, timestamp: Date.now(), createdAt: Date.now() };
           setSessions(prev => [newSession, ...prev]);
           setCurrentStudySessionId(newId);
       }
@@ -638,10 +646,10 @@ export default function App() {
 
   const handleLiveTranscriptUpdate = (liveTranscript: ChatMessage[]) => {
       const merge = (prevMessages: ChatMessage[], newLiveMessages: ChatMessage[]) => { const uniqueNew = newLiveMessages.filter(nm => !prevMessages.some(pm => pm.id === nm.id)); return [...prevMessages, ...uniqueNew]; };
-      if (currentView === 'chinese-tutor') { if (!currentTutorSessionId) { const newId = Date.now().toString(); const newSession: ChatSession = { id: newId, type: 'tutor', title: 'Chinese Live Session', messages: liveTranscript, timestamp: Date.now() }; setSessions(prev => [newSession, ...prev]); setCurrentTutorSessionId(newId); setTutorMessages(liveTranscript); } else { setTutorMessages(prev => merge(prev, liveTranscript)); } } 
-      else if (currentView === 'english-tutor') { if (!currentEnglishSessionId) { const newId = Date.now().toString(); const newSession: ChatSession = { id: newId, type: 'english-tutor', title: 'English Live Session', messages: liveTranscript, timestamp: Date.now() }; setSessions(prev => [newSession, ...prev]); setCurrentEnglishSessionId(newId); setEnglishMessages(liveTranscript); } else { setEnglishMessages(prev => merge(prev, liveTranscript)); } } 
-      else if (currentView === 'study-school' && activeStudySubject) { if (!currentStudySessionId) { const newId = Date.now().toString(); const newSession: ChatSession = { id: newId, type: 'study-school', title: `${activeStudySubject} Live Class`, subjectId: activeStudySubject, messages: liveTranscript, timestamp: Date.now() }; setSessions(prev => [newSession, ...prev]); setCurrentStudySessionId(newId); setStudyMessages(liveTranscript); } else { setStudyMessages(prev => merge(prev, liveTranscript)); } } 
-      else if (currentView === 'chat') { if (!currentSessionId) { const newId = Date.now().toString(); const title = liveTranscript[0]?.content.slice(0, 30) || 'Live Session'; const newSession: ChatSession = { id: newId, type: 'chat', title: title, messages: liveTranscript, timestamp: Date.now() }; setSessions(prev => [newSession, ...prev]); setCurrentSessionId(newId); setMessages(liveTranscript); } else { setMessages(prev => merge(prev, liveTranscript)); } }
+      if (currentView === 'chinese-tutor') { if (!currentTutorSessionId) { const newId = Date.now().toString(); const newSession: ChatSession = { id: newId, type: 'tutor', title: 'Chinese Live Session', messages: liveTranscript, timestamp: Date.now(), createdAt: Date.now() }; setSessions(prev => [newSession, ...prev]); setCurrentTutorSessionId(newId); setTutorMessages(liveTranscript); } else { setTutorMessages(prev => merge(prev, liveTranscript)); } } 
+      else if (currentView === 'english-tutor') { if (!currentEnglishSessionId) { const newId = Date.now().toString(); const newSession: ChatSession = { id: newId, type: 'english-tutor', title: 'English Live Session', messages: liveTranscript, timestamp: Date.now(), createdAt: Date.now() }; setSessions(prev => [newSession, ...prev]); setCurrentEnglishSessionId(newId); setEnglishMessages(liveTranscript); } else { setEnglishMessages(prev => merge(prev, liveTranscript)); } } 
+      else if (currentView === 'study-school' && activeStudySubject) { if (!currentStudySessionId) { const newId = Date.now().toString(); const newSession: ChatSession = { id: newId, type: 'study-school', title: `${activeStudySubject} Live Class`, subjectId: activeStudySubject, messages: liveTranscript, timestamp: Date.now(), createdAt: Date.now() }; setSessions(prev => [newSession, ...prev]); setCurrentStudySessionId(newId); setStudyMessages(liveTranscript); } else { setStudyMessages(prev => merge(prev, liveTranscript)); } } 
+      else if (currentView === 'chat') { if (!currentSessionId) { const newId = Date.now().toString(); const title = liveTranscript[0]?.content.slice(0, 30) || 'Live Session'; const newSession: ChatSession = { id: newId, type: 'chat', title: title, messages: liveTranscript, timestamp: Date.now(), createdAt: Date.now() }; setSessions(prev => [newSession, ...prev]); setCurrentSessionId(newId); setMessages(liveTranscript); } else { setMessages(prev => merge(prev, liveTranscript)); } }
   };
 
   const handleLiveSessionClose = (transcript: ChatMessage[]) => { setIsLiveSessionOpen(false); if (transcript.length > 0) { handleLiveTranscriptUpdate(transcript); } };
@@ -688,7 +696,7 @@ export default function App() {
           onTranslateLanguageChange={handleTranslateLanguageChange}
           currentTheme={theme}
           onThemeChange={setTheme}
-          onBack={() => setCurrentView('chat')} 
+          onBack={() => handleNavigation('chat')} 
           playbackEnabled={playbackEnabled}
           onPlaybackChange={handlePlaybackChange}
           micAccess={micAccess}

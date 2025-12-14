@@ -40,8 +40,11 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     action: 'rename'
   });
 
+  // Filter out "empty" sessions (e.g., just welcome message)
+  const validSessions = sessions.filter(s => s.messages.length > 1);
+
   // Helper to filter sessions
-  const getFilteredSessions = (type: string) => sessions.filter(s => s.type === type);
+  const getFilteredSessions = (type: string) => validSessions.filter(s => s.type === type);
   const getCount = (type: string) => getFilteredSessions(type).length;
 
   const handleRenameClick = (id: string, currentTitle: string, e: React.MouseEvent) => {
@@ -75,11 +78,6 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
       if (modalConfig.action === 'rename' && value) {
           onRenameSession(modalConfig.sessionId, value);
       } else if (modalConfig.action === 'delete') {
-          // Create a synthetic event or just pass the ID if the handler supports it
-          // The App.tsx handler expects an event for stopPropagation, but we can pass a dummy one or null
-          // However, checking App.tsx, it uses 'e' to stop propagation. 
-          // We already stopped propagation when clicking the button. 
-          // We can create a fake event object.
           const fakeEvent = { stopPropagation: () => {} } as React.MouseEvent;
           onDeleteSession(modalConfig.sessionId, fakeEvent);
       }
@@ -236,9 +234,13 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                       <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded-full text-gray-500 uppercase tracking-wide font-bold">{session.subjectId}</span>
                   )}
                 </div>
-                <p className="text-xs text-gray-400">
-                  {new Date(session.timestamp).toLocaleDateString()} &bull; {new Date(session.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </p>
+                <div className="flex items-center gap-3 text-xs text-gray-400 mt-1">
+                    {/* Display Created At time as primary info */}
+                    <span className="flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clipRule="evenodd" /></svg>
+                        Started: {new Date(session.createdAt || session.timestamp).toLocaleDateString()} at {new Date(session.createdAt || session.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                </div>
               </div>
 
               <div className="relative flex items-center gap-3">

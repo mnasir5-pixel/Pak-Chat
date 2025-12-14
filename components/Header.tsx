@@ -32,7 +32,7 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   return (
-    <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 py-3 px-4 flex items-center justify-between sticky top-0 z-10 shadow-sm transition-colors duration-200">
+    <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 py-3 px-4 flex items-center justify-between sticky top-0 z-50 shadow-sm transition-colors duration-200">
       <div className="flex items-center gap-3">
         {/* Menu Toggle Button */}
         <button 
@@ -82,7 +82,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             {isMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 z-50 overflow-hidden animate-in fade-in zoom-in-95">
+                <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 z-[100] overflow-hidden animate-in fade-in zoom-in-95">
                     <div className="p-1 space-y-0.5">
                         
                         {/* Quiz Button */}

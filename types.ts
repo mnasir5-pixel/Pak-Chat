@@ -1,5 +1,4 @@
 
-
 export type Role = 'user' | 'model';
 
 export interface ChatMessage {
@@ -20,7 +19,8 @@ export interface ChatSession {
   title: string;
   subjectId?: string; // Specific for Study School (e.g., 'Math', 'Science')
   messages: ChatMessage[];
-  timestamp: number;
+  timestamp: number; // Last updated
+  createdAt?: number; // Creation time
 }
 
 export type LoadingState = 'idle' | 'loading' | 'streaming';
