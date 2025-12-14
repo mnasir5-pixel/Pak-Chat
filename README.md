@@ -1,5 +1,4 @@
 # Pak-Chat
-
 PAK-CHAT: My personal web-based instant messaging platform using TSX and Node.js dependencies.
 
 Pak-Chat is a lightweight, fast, and modern chat application built using React. It features real-time messaging, user authentication, and a clean UI designed for a smooth chatting experience.
