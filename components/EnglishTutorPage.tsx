@@ -12,6 +12,7 @@ interface EnglishTutorPageProps {
   language?: string;
   onRegenerate?: (id: string) => void;
   onStartLive: () => void;
+  onEdit?: (id: string, newContent: string) => void; // Added onEdit
 }
 
 export const EnglishTutorPage: React.FC<EnglishTutorPageProps> = ({ 
@@ -21,7 +22,8 @@ export const EnglishTutorPage: React.FC<EnglishTutorPageProps> = ({
   onStartTest,
   language,
   onRegenerate,
-  onStartLive
+  onStartLive,
+  onEdit // Destructure
 }) => {
   
   // If we have no messages (or empty array), show intro
@@ -54,7 +56,7 @@ export const EnglishTutorPage: React.FC<EnglishTutorPageProps> = ({
             <MessageList 
               messages={messages} 
               loadingState={loadingState} 
-              onEdit={() => {}} // Edit not supported in tutor for now
+              onEdit={onEdit || (() => {})} // Pass onEdit
               onRegenerate={onRegenerate}
               onReply={(text) => onSendMessage(text)}
               language={language}
@@ -73,3 +75,4 @@ export const EnglishTutorPage: React.FC<EnglishTutorPageProps> = ({
     </div>
   );
 };
+
