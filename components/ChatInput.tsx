@@ -8,11 +8,33 @@ interface ChatInputProps {
   isLoading: boolean;
   hardwareAccess?: boolean; 
   language?: string; 
-  onRequestMicAccess?: () => void; // New Prop
+  onRequestMicAccess?: () => void;
+  replyingTo?: string | null; 
+  onCancelReply?: () => void; 
+  
+  // Controlled Input Props for Persistence
+  value?: string;
+  onInputChange?: (val: string) => void;
 }
 
-export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStartLive, isLoading, hardwareAccess = true, language = 'English', onRequestMicAccess }) => {
-  const [input, setInput] = useState('');
+export const ChatInput: React.FC<ChatInputProps> = ({ 
+  onSend, 
+  onStartLive, 
+  isLoading, 
+  hardwareAccess = true, 
+  language = 'English', 
+  onRequestMicAccess,
+  replyingTo,
+  onCancelReply,
+  value,
+  onInputChange
+}) => {
+  // Local state is used if value/onInputChange are not provided (uncontrolled mode fallback)
+  const [localInput, setLocalInput] = useState('');
+  
+  // Derived input value (Controlled > Local)
+  const input = value !== undefined ? value : localInput;
+  
   const [attachment, setAttachment] = useState<File | null>(null);
   const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
   const [attachmentType, setAttachmentType] = useState<string>('image');
@@ -34,6 +56,25 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStartLive, isLoa
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Auto-focus logic: Run on mount and when loading finishes
+  useEffect(() => {
+    if (!isLoading && textareaRef.current) {
+      textareaRef.current.focus();
+      // Move cursor to the end of the text
+      const length = textareaRef.current.value.length;
+      textareaRef.current.setSelectionRange(length, length);
+    }
+  }, [isLoading]); 
+
+  // Focus input when reply is triggered
+  useEffect(() => {
+    if (replyingTo && textareaRef.current) {
+      textareaRef.current.focus();
+      const length = textareaRef.current.value.length;
+      textareaRef.current.setSelectionRange(length, length);
+    }
+  }, [replyingTo]);
+
   const adjustHeight = () => {
     const textarea = textareaRef.current;
     if (textarea) {
@@ -47,9 +88,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStartLive, isLoa
     adjustHeight();
   }, [input]);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const val = e.target.value;
+      if (onInputChange) onInputChange(val);
+      else setLocalInput(val);
+  };
+
+  const processFile = (file: File) => {
       setAttachment(file);
       
       if (file.type.startsWith('image/')) {
@@ -68,8 +113,29 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStartLive, isLoa
          setAttachmentType('file');
          setAttachmentPreview(null);
       }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      processFile(e.target.files[0]);
     }
     setShowMenu(false);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    // Check for files in clipboard
+    if (e.clipboardData.items) {
+      for (let i = 0; i < e.clipboardData.items.length; i++) {
+        const item = e.clipboardData.items[i];
+        if (item.kind === 'file') {
+          const file = item.getAsFile();
+          if (file) {
+            processFile(file);
+            // We allow text to paste naturally if mixed, but usually file paste is standalone intent
+          }
+        }
+      }
+    }
   };
 
   const clearAttachment = () => {
@@ -83,13 +149,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStartLive, isLoa
     
     onSend(input, attachment || undefined);
     
-    setInput('');
+    // Clear input based on mode
+    if (onInputChange) onInputChange('');
+    else setLocalInput('');
+    
     clearAttachment();
     
-    if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-        textareaRef.current.focus();
-    }
+    // Focus is handled by the useEffect dependent on isLoading flipping back to false
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -124,7 +190,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStartLive, isLoa
       rec.onend = () => setIsListening(false);
       rec.onresult = (e: any) => {
           const transcript = e.results[0][0].transcript;
-          setInput(prev => prev ? `${prev} ${transcript}` : transcript);
+          const newVal = input ? `${input} ${transcript}` : transcript;
+          if (onInputChange) onInputChange(newVal);
+          else setLocalInput(newVal);
       };
       
       rec.start();
@@ -132,27 +200,28 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStartLive, isLoa
 
   const handleMenuAction = (action: string) => {
       setShowMenu(false);
+      let newText = input;
       switch(action) {
           case 'file':
               fileInputRef.current?.click();
-              break;
+              return;
           case 'image':
-              setInput("Generate an image of ");
-              textareaRef.current?.focus();
+              newText = "Generate an image of ";
               break;
           case 'deep':
-              setInput("Deep research on: ");
-              textareaRef.current?.focus();
+              newText = "Deep research on: ";
               break;
           case 'web':
-              setInput("Search for: ");
-              textareaRef.current?.focus();
+              newText = "Search for: ";
               break;
           case 'study':
-              setInput("Teach me about: ");
-              textareaRef.current?.focus();
+              newText = "Teach me about: ";
               break;
       }
+      if (onInputChange) onInputChange(newText);
+      else setLocalInput(newText);
+      
+      textareaRef.current?.focus();
   };
 
   const hasContent = input.trim().length > 0 || !!attachment;
@@ -187,9 +256,27 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStartLive, isLoa
 
   return (
     <div className="w-full mx-auto relative">
+      {/* REPLY PREVIEW */}
+      {replyingTo && (
+        <div className="mb-2 mx-1 bg-gray-50 dark:bg-gray-800 border-l-4 border-blue-500 rounded-r-lg p-3 flex items-start justify-between shadow-sm animate-in fade-in slide-in-from-bottom-2">
+            <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-blue-600 dark:text-blue-400 mb-0.5">Replying to</p>
+                <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">{replyingTo}</p>
+            </div>
+            <button 
+                onClick={onCancelReply}
+                className="ml-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                </svg>
+            </button>
+        </div>
+      )}
+
       {/* Attachment Preview */}
       {attachment && (
-        <div className="mb-2 relative w-20 h-20 group">
+        <div className="mb-2 relative w-20 h-20 group mx-1">
           {getAttachmentIcon()}
           <button 
             onClick={clearAttachment}
@@ -252,13 +339,15 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStartLive, isLoa
           <textarea
             ref={textareaRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder={isListening ? "Listening..." : (attachment ? "Add instructions for this file..." : "Ask anything...")}
+            onPaste={handlePaste}
+            placeholder={isListening ? "Listening..." : (replyingTo ? "Type your question..." : (attachment ? "Add instructions for this file..." : "Ask anything..."))}
             rows={1}
             className="flex-1 max-h-[150px] py-3 bg-transparent border-none focus:ring-0 focus:outline-none text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 resize-none overflow-y-auto leading-normal scrollbar-hide"
             style={{ minHeight: '44px' }}
             disabled={isLoading}
+            autoFocus
           />
 
           {/* Voice Input Button */}
@@ -279,7 +368,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStartLive, isLoa
             <button
               onClick={handleSubmit}
               disabled={isLoading}
-              className="p-2 rounded-full flex-shrink-0 transition-all duration-200 mb-1 bg-blue-600 text-white hover:bg-blue-500 shadow-md transform hover:scale-105"
+              className="p-2 rounded-full flex-shrink-0 transition-all duration-200 mb-1 bg-blue-600 text-white hover:bg-blue-50 shadow-md transform hover:scale-105"
               aria-label="Send message"
               title="Send Message"
             >
@@ -314,3 +403,4 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStartLive, isLoa
     </div>
   );
 };
+
