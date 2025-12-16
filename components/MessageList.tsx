@@ -11,7 +11,8 @@ interface MessageListProps {
   onReply?: (content: string) => void;
   language?: string; 
   translateLanguage?: string;
-  playbackEnabled?: boolean; // New Prop
+  playbackEnabled?: boolean; 
+  onBranchChat?: (id: string) => void; // New Prop
 }
 
 export const MessageList: React.FC<MessageListProps> = ({ 
@@ -22,7 +23,8 @@ export const MessageList: React.FC<MessageListProps> = ({
   onReply, 
   language = 'English', 
   translateLanguage = 'Urdu',
-  playbackEnabled = true
+  playbackEnabled = true,
+  onBranchChat
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -88,6 +90,7 @@ export const MessageList: React.FC<MessageListProps> = ({
           language={language}
           translateLanguage={translateLanguage}
           playbackEnabled={playbackEnabled}
+          onBranchChat={onBranchChat} // Pass it down
         />
       ))}
       
@@ -108,3 +111,4 @@ export const MessageList: React.FC<MessageListProps> = ({
     </div>
   );
 };
+
