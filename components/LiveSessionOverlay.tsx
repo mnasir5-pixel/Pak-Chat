@@ -24,17 +24,14 @@ interface LiveSessionOverlayProps {
   language: string;
   systemInstruction?: string;
   micAccess?: boolean;
-  cameraAccess?: boolean;
-  onRequestCameraAccess?: () => void; // New Prop
 }
 
-export const LiveSessionOverlay: React.FC<LiveSessionOverlayProps> = ({ onClose, onTranscriptUpdate, language, systemInstruction, micAccess = true, cameraAccess = true, onRequestCameraAccess }) => {
+export const LiveSessionOverlay: React.FC<LiveSessionOverlayProps> = ({ onClose, onTranscriptUpdate, language, systemInstruction, micAccess = true }) => {
   const [viewState, setViewState] = useState<'voice-selection' | 'session'>('voice-selection');
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [status, setStatus] = useState("Offline");
   const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOn, setIsVideoOn] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [volumeLevel, setVolumeLevel] = useState(0);
   const [selectedVoice, setSelectedVoice] = useState('Kore');
@@ -60,11 +57,6 @@ export const LiveSessionOverlay: React.FC<LiveSessionOverlayProps> = ({ onClose,
   
   // Track active audio sources for interruption
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
-
-  // Refs for Video Handling
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const videoIntervalRef = useRef<number | null>(null);
 
   // Refs for Transcription Buffer
   const messagesRef = useRef<ChatMessage[]>([]);
@@ -162,8 +154,6 @@ export const LiveSessionOverlay: React.FC<LiveSessionOverlayProps> = ({ onClose,
       setIsConnecting(true);
       setStatus("Connecting...");
       
-      // If mic is explicitly denied in master settings, we shouldn't even be here usually,
-      // but double check.
       if (!micAccess) {
           alert("Microphone access is denied. Please enable it in Settings.");
           onClose([]);
@@ -333,7 +323,6 @@ export const LiveSessionOverlay: React.FC<LiveSessionOverlayProps> = ({ onClose,
     setIsConnecting(false);
     setStatus("Offline");
     setVolumeLevel(0);
-    stopVideo();
     stopAllAudio();
 
     if (streamRef.current) {
@@ -369,60 +358,6 @@ export const LiveSessionOverlay: React.FC<LiveSessionOverlayProps> = ({ onClose,
          });
     }
     if (onTranscriptUpdate) onTranscriptUpdate([...messagesRef.current]);
-  };
-
-  const startVideo = async () => {
-      if (!cameraAccess) {
-          if (onRequestCameraAccess) onRequestCameraAccess();
-          else alert("Camera access is disabled in Settings.");
-          return;
-      }
-      try {
-          const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
-          if (videoRef.current) {
-              videoRef.current.srcObject = videoStream;
-              videoRef.current.play();
-          }
-          setIsVideoOn(true);
-          videoIntervalRef.current = window.setInterval(async () => {
-              if (!videoRef.current || !canvasRef.current || !sessionPromiseRef.current) return;
-              const ctx = canvasRef.current.getContext('2d');
-              if (!ctx) return;
-              canvasRef.current.width = videoRef.current.videoWidth;
-              canvasRef.current.height = videoRef.current.videoHeight;
-              ctx.drawImage(videoRef.current, 0, 0);
-              const base64 = canvasRef.current.toDataURL('image/jpeg', 0.8).split(',')[1];
-              sessionPromiseRef.current.then((session: any) => {
-                   session.sendRealtimeInput({ media: { mimeType: 'image/jpeg', data: base64 } });
-              });
-          }, 1000);
-      } catch (e) {
-          console.error("Failed to start video", e);
-          alert("Could not access camera.");
-      }
-  };
-
-  const stopVideo = () => {
-      if (videoIntervalRef.current) {
-          clearInterval(videoIntervalRef.current);
-          videoIntervalRef.current = null;
-      }
-      if (videoRef.current && videoRef.current.srcObject) {
-          const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-          tracks.forEach(t => t.stop());
-          videoRef.current.srcObject = null;
-      }
-      setIsVideoOn(false);
-  };
-
-  const toggleVideo = (e: React.MouseEvent) => {
-      e.stopPropagation();
-      e.preventDefault();
-      // Only toggle if connected (or if we need to request permission)
-      if (!isConnected && cameraAccess) return; 
-      
-      // If we are connected OR if we want to trigger permission while unconnected (though UI usually prevents)
-      isVideoOn ? stopVideo() : startVideo();
   };
 
   const handleEnd = () => { cleanupSession(); onClose([...messagesRef.current]); };
@@ -523,26 +458,6 @@ export const LiveSessionOverlay: React.FC<LiveSessionOverlayProps> = ({ onClose,
     <div className="!fixed !inset-0 !z-[9999] !h-[100dvh] !w-screen flex flex-col bg-[#0a101f] text-white overflow-hidden animate-in fade-in duration-300">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-blue-900/20 via-[#0a101f] to-[#0a101f]"></div>
       
-      {/* Hidden Video Element for Stream */}
-      <video ref={videoRef} autoPlay playsInline muted className="hidden" />
-      <canvas ref={canvasRef} className="hidden" />
-
-      {/* Video Overlay (If Enabled) */}
-      {isVideoOn && (
-          <div className="absolute inset-0 z-0">
-              {/* Self-view PIP */}
-              <div className="absolute top-20 right-6 w-32 h-48 bg-black rounded-xl overflow-hidden border border-white/20 shadow-lg">
-                  <video 
-                      ref={(el) => {
-                          if(el && videoRef.current && videoRef.current.srcObject) el.srcObject = videoRef.current.srcObject;
-                      }} 
-                      autoPlay playsInline muted 
-                      className="w-full h-full object-cover" 
-                  />
-              </div>
-          </div>
-      )}
-
       <div className="relative z-10 flex items-center justify-between p-6">
          <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
@@ -602,19 +517,6 @@ export const LiveSessionOverlay: React.FC<LiveSessionOverlayProps> = ({ onClose,
               )}
           </button>
 
-          {/* VIDEO BUTTON */}
-          <button 
-              onClick={toggleVideo} 
-              className={`p-5 rounded-full transition-all shadow-lg cursor-pointer ${isVideoOn ? 'bg-white text-gray-900 hover:bg-gray-200' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'}`} 
-              title={isVideoOn ? "Turn Camera Off" : "Turn Camera On"}
-          >
-              {isVideoOn ? (
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" /></svg>
-              ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M12 18.75H4.5a2.25 2.25 0 01-2.25-2.25V9m12.841 9.091L16.5 19.5m-1.409-1.409c.407-.407.659-.97.659-1.591v-9a2.25 2.25 0 00-2.25-2.25h-9c-.621 0-1.184.252-1.591.659m12.182 12.182L2.909 5.909M1.5 4.5l1.409 1.409" /></svg>
-              )}
-          </button>
-
           {/* END BUTTON */}
           <button 
               onClick={handleEnd} 
@@ -627,3 +529,4 @@ export const LiveSessionOverlay: React.FC<LiveSessionOverlayProps> = ({ onClose,
     </div>
   );
 };
+
