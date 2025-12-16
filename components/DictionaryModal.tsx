@@ -123,3 +123,4 @@ export const DictionaryModal: React.FC<DictionaryModalProps> = ({ isOpen, onClos
     </div>
   );
 };
+
