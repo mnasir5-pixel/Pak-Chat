@@ -291,6 +291,12 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
   const [sourceLang, setSourceLang] = useState('Auto');
   const [targetLang, setTargetLang] = useState(language);
 
+  // TTS State
+  const [speechState, setSpeechState] = useState<'idle' | 'playing' | 'paused'>('idle');
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const progressRef = useRef<number>(0);
+  const isPausedRef = useRef<boolean>(false);
+
   // Audio Transcribe
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -313,7 +319,79 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
     }
   }, [activeNoteId]);
 
+  // Cleanup TTS
+  useEffect(() => {
+    return () => {
+        window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  // Stop TTS when switching notes
+  useEffect(() => {
+      if (speechState !== 'idle') {
+          window.speechSynthesis.cancel();
+          setSpeechState('idle');
+          progressRef.current = 0;
+          isPausedRef.current = false;
+      }
+  }, [activeNoteId]);
+
   const activeNote = notes.find(n => n.id === activeNoteId);
+
+  const startSpeaking = (resumeIndex: number = 0) => {
+      window.speechSynthesis.cancel();
+      isPausedRef.current = false;
+
+      if (!editorRef.current) return;
+      
+      const fullText = editorRef.current.innerText;
+      const textToSpeak = fullText.substring(resumeIndex);
+      
+      if (!textToSpeak.trim()) {
+          setSpeechState('idle');
+          progressRef.current = 0;
+          return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      const langConfig = SUPPORTED_LANGUAGES.find(l => l.name === language);
+      if (langConfig) utterance.lang = langConfig.code;
+      
+      utterance.onboundary = (e) => {
+          progressRef.current = resumeIndex + e.charIndex;
+      };
+
+      utterance.onend = () => {
+          if (isPausedRef.current) return;
+          setSpeechState('idle');
+          progressRef.current = 0;
+          utteranceRef.current = null;
+      };
+      
+      utterance.onerror = () => {
+          if (isPausedRef.current) return;
+          setSpeechState('idle');
+          progressRef.current = 0;
+          utteranceRef.current = null;
+      };
+
+      utteranceRef.current = utterance;
+      window.speechSynthesis.speak(utterance);
+      setSpeechState('playing');
+  };
+
+  const handlePlayPause = () => {
+      if (speechState === 'playing') {
+          isPausedRef.current = true;
+          window.speechSynthesis.cancel();
+          setSpeechState('paused');
+      } else if (speechState === 'paused') {
+          startSpeaking(progressRef.current);
+      } else {
+          progressRef.current = 0;
+          startSpeaking(0);
+      }
+  };
 
   const handleCreateNote = () => {
     const newNote: Note = {
@@ -436,6 +514,14 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
   const handleEditorInput = (e: React.FormEvent<HTMLDivElement>) => {
     if (activeNoteId) {
       updateNote(activeNoteId, { content: e.currentTarget.innerHTML });
+      
+      // Stop speech on edit to avoid index mismatch
+      if (speechState !== 'idle') {
+          window.speechSynthesis.cancel();
+          setSpeechState('idle');
+          progressRef.current = 0;
+          isPausedRef.current = false;
+      }
     }
   };
 
@@ -496,7 +582,6 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
       });
   };
 
-  // ... (Paste, Cut, Copy, Table logic same as before) ...
   const handlePaste = async () => { try { const text = await navigator.clipboard.readText(); execCmd('insertText', text); } catch (err) { alert("Browser blocked programmatic paste. Please use Ctrl+V (Cmd+V) to paste."); } };
   const handleCut = () => execCmd('cut');
   const handleCopy = () => execCmd('copy');
@@ -512,9 +597,8 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
   const contentDir = activeNote ? getTextDirection(editorRef.current?.innerText || '') : 'ltr';
 
   const FONT_FAMILIES = [ { label: 'Arial', value: 'Arial' }, { label: 'Arial Black', value: 'Arial Black' }, { label: 'Algerian', value: 'Algerian' }, { label: 'Book Antiqua', value: 'Book Antiqua' }, { label: 'Comic Sans MS', value: 'Comic Sans MS' }, { label: 'Courier New', value: 'Courier New' }, { label: 'Georgia', value: 'Georgia' }, { label: 'Impact', value: 'Impact' }, { label: 'Tahoma', value: 'Tahoma' }, { label: 'Times New Roman', value: 'Times New Roman' }, { label: 'Verdana', value: 'Verdana' } ];
-  // UPDATED FONT SIZES as requested
   const FONT_SIZES = [
-    { label: '8', value: '1' }, // HTML font size 1 is ~8-10px
+    { label: '8', value: '1' }, 
     { label: '10', value: '2' },
     { label: '12', value: '3' },
     { label: '14', value: '4' },
@@ -563,7 +647,6 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
                             <input dir={titleDir} value={activeNote.title} onChange={(e) => updateNote(activeNote.id, { title: e.target.value })} className={`flex-1 bg-transparent text-lg md:text-xl font-bold text-gray-800 dark:text-white placeholder-gray-300 border-none focus:ring-0 min-w-0 p-0 ${titleDir === 'rtl' ? 'text-right' : 'text-left'}`} placeholder="Note Title" />
                        </div>
                        
-                       {/* SAVE BUTTON (New) */}
                        <button onClick={handleSaveManually} className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 dark:hover:bg-gray-800 rounded-lg transition-colors flex items-center gap-2" title="Save Note">
                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3.25a2.25 2.25 0 100 4.5 2.25 2.25 0 000-4.5zM12 7.5V3m0 3v4.5" /></svg>
                        </button>
@@ -576,6 +659,38 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
                    <div className="flex items-center justify-between px-3 pb-2 gap-2 overflow-x-auto no-scrollbar border-t border-dashed border-gray-100 dark:border-gray-800 pt-2">
                         <div className="flex items-center gap-1 md:gap-3">
                              <div className="flex gap-0.5"><ToolbarButton onClick={() => execCmd('undo')} icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>} title="Undo" /><ToolbarButton onClick={() => execCmd('redo')} icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3" /></svg>} title="Redo" /></div>
+                             <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-1"></div>
+                             
+                             {/* READ BUTTON */}
+                             <ToolbarButton 
+                                onClick={handlePlayPause} 
+                                active={speechState === 'playing'}
+                                icon={
+                                    speechState === 'playing' ? (
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M6.75 5.25a.75.75 0 01.75-.75H9a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H7.5a.75.75 0 01-.75-.75V5.25zm7.5 0A.75.75 0 0115 4.5h1.5a.75.75 0 01.75.75v13.5a.75.75 0 01-.75-.75H15a.75.75 0 01-.75-.75V5.25z" clipRule="evenodd" /></svg>
+                                    ) : speechState === 'paused' ? (
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clipRule="evenodd" /></svg>
+                                    ) : (
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" /></svg>
+                                    )
+                                } 
+                                title={speechState === 'playing' ? "Pause Reading" : speechState === 'paused' ? "Resume Reading" : "Read Note"} 
+                             />
+
+                             {/* ADDED: STOP BUTTON */}
+                             {(speechState !== 'idle') && (
+                                <ToolbarButton
+                                    onClick={() => {
+                                        window.speechSynthesis.cancel();
+                                        setSpeechState('idle');
+                                        progressRef.current = 0;
+                                        isPausedRef.current = false;
+                                    }}
+                                    icon={<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-red-500"><path fillRule="evenodd" d="M4.5 7.5a3 3 0 013-3h9a3 3 0 013 3v9a3 3 0 01-3 3h-9a3 3 0 01-3-3v-9z" clipRule="evenodd" /></svg>}
+                                    title="Stop Reading"
+                                />
+                             )}
+
                              <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-1"></div>
                              <div className="flex gap-0.5"><ToolbarButton active={isBold} onClick={() => execCmd('bold')} icon={<span className="font-bold serif">B</span>} title="Bold" /><ToolbarButton active={isItalic} onClick={() => execCmd('italic')} icon={<span className="italic serif">I</span>} title="Italic" /><ToolbarButton active={isUnderline} onClick={() => execCmd('underline')} icon={<span className="underline serif">U</span>} title="Underline" /></div>
                              <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-1"></div>
@@ -730,3 +845,4 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
     </div>
   );
 };
+
