@@ -16,8 +16,6 @@ interface SettingsPageProps {
   // Hardware Access
   micAccess?: boolean;
   onMicAccessChange?: (enabled: boolean) => void;
-  cameraAccess?: boolean;
-  onCameraAccessChange?: (enabled: boolean) => void;
   // User Profile
   userName?: string;
   userAvatar?: string;
@@ -38,8 +36,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   onPlaybackChange,
   micAccess = true,
   onMicAccessChange,
-  cameraAccess = true,
-  onCameraAccessChange,
   userName = '',
   userAvatar = '',
   onUpdateProfile,
@@ -334,26 +330,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   </button>
               </div>
           </div>
-
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
-              <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                      <div className="p-2 bg-pink-50 dark:bg-pink-900/30 text-pink-600 rounded-lg">
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M4.5 4.5a3 3 0 00-3 3v9a3 3 0 003 3h8.25a3 3 0 003-3v-9a3 3 0 00-3-3H4.5zM19.94 18.75l-2.69-2.69V7.94l2.69-2.69c.944-.945 2.56-.276 2.56 1.06v11.38c0 1.336-1.616 2.005-2.56 1.06z" /></svg>
-                      </div>
-                      <div>
-                          <h4 className="font-medium text-gray-900 dark:text-white">Camera Access</h4>
-                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Required for video analysis in Live Chat.</p>
-                      </div>
-                  </div>
-                  <button 
-                      onClick={() => onCameraAccessChange && onCameraAccessChange(!cameraAccess)}
-                      className={`w-12 h-6 rounded-full transition-colors relative ${cameraAccess ? 'bg-green-600' : 'bg-gray-300 dark:bg-gray-600'}`}
-                  >
-                      <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${cameraAccess ? 'left-7' : 'left-1'}`}></div>
-                  </button>
-              </div>
-          </div>
       </div>
     </div>
   );
@@ -502,7 +478,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl group-hover:bg-indigo-600 group-hover:text-white transition-colors">🔒</div>
                     <div className="flex-1 text-left">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Privacy & Permissions</h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Mic/Cam Control</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Microphone Control</p>
                     </div>
                 </button>
 
@@ -537,3 +513,4 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     </div>
   );
 };
+
