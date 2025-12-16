@@ -4,8 +4,8 @@ import React from 'react';
 interface AppSidebarProps {
   isOpen: boolean;
   onClose: () => void;
-  currentView: 'chat' | 'history' | 'chinese-tutor' | 'english-tutor' | 'study-school' | 'settings' | 'notes';
-  onNavigate: (view: 'chat' | 'history' | 'chinese-tutor' | 'english-tutor' | 'study-school' | 'settings' | 'notes') => void;
+  currentView: 'chat' | 'history' | 'tutors' | 'study-school' | 'settings' | 'notes';
+  onNavigate: (view: 'chat' | 'history' | 'tutors' | 'study-school' | 'settings' | 'notes') => void;
 }
 
 export const AppSidebar: React.FC<AppSidebarProps> = ({ 
@@ -63,20 +63,12 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                 <span>Pak Chat</span>
               </button>
 
-              {/* Chinese Tutor */}
-              <button onClick={() => onNavigate('chinese-tutor')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-left ${currentView === 'chinese-tutor' ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 shadow-sm ring-1 ring-red-200 dark:ring-red-800 font-semibold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white'}`}>
-                <div className={`p-1.5 rounded-lg ${currentView === 'chinese-tutor' ? 'bg-red-200/50 dark:bg-red-800/50' : 'bg-gray-100 dark:bg-gray-800'}`}>
-                  <span className="text-lg leading-none">🇨🇳</span>
+              {/* Language Tutors */}
+              <button onClick={() => onNavigate('tutors')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-left ${currentView === 'tutors' ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 shadow-sm ring-1 ring-teal-200 dark:ring-teal-800 font-semibold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white'}`}>
+                <div className={`p-1.5 rounded-lg ${currentView === 'tutors' ? 'bg-teal-200/50 dark:bg-teal-800/50' : 'bg-gray-100 dark:bg-gray-800'}`}>
+                  <span className="text-lg leading-none">🗣️</span>
                 </div>
-                <span>Chinese Tutor</span>
-              </button>
-
-              {/* English Tutor */}
-              <button onClick={() => onNavigate('english-tutor')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-left ${currentView === 'english-tutor' ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 shadow-sm ring-1 ring-green-200 dark:ring-green-800 font-semibold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white'}`}>
-                <div className={`p-1.5 rounded-lg ${currentView === 'english-tutor' ? 'bg-green-200/50 dark:bg-green-800/50' : 'bg-gray-100 dark:bg-gray-800'}`}>
-                  <span className="text-lg leading-none">🇬🇧</span>
-                </div>
-                <span>English Tutor</span>
+                <span>Language Tutors</span>
               </button>
 
               {/* Study School */}
@@ -116,3 +108,4 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
     </>
   );
 };
+
