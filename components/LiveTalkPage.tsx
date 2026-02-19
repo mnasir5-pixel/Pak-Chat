@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { CONFIG } from '../services/config';
@@ -141,8 +142,8 @@ export const LiveSessionOverlay: React.FC<LiveSessionOverlayProps> = ({ onClose,
       setIsConnecting(true);
       setStatus("Connecting...");
       
-      const apiKey = CONFIG.GEMINI_API_KEY || process.env.API_KEY || '';
-      if (!apiKey) {
+      // Fixed: Obtained API key exclusively from process.env.API_KEY
+      if (!process.env.API_KEY) {
         alert("API Key is missing. Please check configuration.");
         setIsConnecting(false);
         setStatus("Error: No API Key");
@@ -157,12 +158,13 @@ export const LiveSessionOverlay: React.FC<LiveSessionOverlayProps> = ({ onClose,
       audioContextRef.current = outputCtx;
       nextStartTimeRef.current = outputCtx.currentTime;
 
-      const ai = new GoogleGenAI({ apiKey });
+      // Fixed: Initialize directly with process.env.API_KEY
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         callbacks: {
           onopen: () => {
             console.log("Session Opened");
@@ -451,15 +453,14 @@ export const LiveSessionOverlay: React.FC<LiveSessionOverlayProps> = ({ onClose,
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" /></svg>
               )}
           </button>
-
+          
           <button 
               onClick={handleEnd}
-              className="p-5 rounded-full bg-red-600 text-white hover:bg-red-700 transition-all shadow-lg shadow-red-900/50 transform hover:scale-105"
+              className="p-5 rounded-full bg-red-600 text-white hover:bg-red-700 transition-all shadow-xl shadow-red-500/20 active:scale-95"
           >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" /></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
           </button>
       </div>
-
     </div>
   );
 };

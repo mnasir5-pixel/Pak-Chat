@@ -1,8 +1,7 @@
 {
-  "name": "Real Pak Chat updated 01",
-  "description": "A high-performance, intelligent AI assistant interface powered by Gemini 2.5 Flash. Features real-time streaming, markdown formatting, and a clean, responsive chat experience.",
+  "name": "V.B.Pak Chat3",
+  "description": "An all-in-one creative workbench leveraging Gemini's multi-modal capabilities for text generation, high-fidelity image creation, and natural text-to-speech synthesis.",
   "requestFramePermissions": [
-    "microphone",
-    "camera"
+    "microphone"
   ]
 }

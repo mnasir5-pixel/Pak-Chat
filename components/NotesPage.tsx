@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import * as docx from 'docx';
+import saveAs from 'file-saver';
 import { SUPPORTED_LANGUAGES } from '../constants';
 import { ActionModal } from './ActionModal';
 
@@ -15,6 +17,7 @@ interface NotesPageProps {
   onTranscribe?: (audioFile: File) => Promise<string>; // New prop for audio transcription
   language: string;
   onMenuClick: () => void;
+  onStartLive?: () => void;
 }
 
 // Helper to detect text direction
@@ -237,7 +240,7 @@ const TableGridPicker: React.FC<{
 };
 
 
-export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, language, onMenuClick }) => {
+export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, language, onMenuClick, onStartLive }) => {
   const [notes, setNotes] = useState<Note[]>(() => {
     try {
       const saved = localStorage.getItem('naxi_notes_data');
@@ -248,8 +251,14 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
+  const [showFileConfirmation, setShowFileConfirmation] = useState(false);
+
+  // Sidebar Toggle State
+  const [isListVisible, setIsListVisible] = useState(true);
+  const [isDesktop, setIsDesktop] = useState(typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
 
   // Modal State
   const [modalConfig, setModalConfig] = useState<{
@@ -266,6 +275,7 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
   const [isExpanded, setIsExpanded] = useState(false);
   const [currentFont, setCurrentFont] = useState('Arial');
   const [currentSize, setCurrentSize] = useState('3');
+  const [currentBlockType, setCurrentBlockType] = useState('p');
   const [isBold, setIsBold] = useState(false);
   const [isItalic, setIsItalic] = useState(false);
   const [isUnderline, setIsUnderline] = useState(false);
@@ -296,6 +306,13 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
 
   const editorRef = useRef<HTMLDivElement>(null);
 
+  // Resize Listener for Desktop Detection
+  useEffect(() => {
+    const handleResize = () => setIsDesktop(window.innerWidth >= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Auto-save
   useEffect(() => {
     if (autoSaveEnabled) {
@@ -324,6 +341,7 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
     };
     setNotes(prev => [newNote, ...prev]);
     setActiveNoteId(newNote.id);
+    if (!isListVisible) setIsListVisible(true); // Auto open sidebar on new note
   };
 
   const handleSaveManually = () => {
@@ -395,24 +413,38 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
     setNotes(prev => [newNote, ...prev]);
   };
 
-  const handleDownloadNote = (id: string, e: React.MouseEvent) => {
+  const handleDownloadNote = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
     setMenuOpenId(null);
     const note = notes.find(n => n.id === id);
     if (!note) return;
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = note.content.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n');
-    const text = tempDiv.innerText || tempDiv.textContent || "";
-    const blob = new Blob([text], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${note.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'note'}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+
+    try {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = note.content;
+      const text = tempDiv.innerText || tempDiv.textContent || "";
+
+      const doc = new docx.Document({
+        sections: [{
+          properties: {},
+          children: [
+            new docx.Paragraph({
+              children: [
+                new docx.TextRun({
+                  text: text,
+                }),
+              ],
+            }),
+          ],
+        }],
+      });
+
+      const blob = await docx.Packer.toBlob(doc);
+      saveAs(blob, `${note.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'note'}.docx`);
+    } catch (err) {
+      console.error("Export failed", err);
+    }
   };
 
   // --- SHARE FUNCTIONALITY ---
@@ -466,6 +498,9 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
     if (hColor && hColor !== 'rgba(0, 0, 0, 0)' && hColor !== 'transparent') {
         setHiliteColor(rgbToHex(hColor));
     }
+
+    const block = document.queryCommandValue('formatBlock');
+    if (block) setCurrentBlockType(block.toLowerCase());
   };
 
   const execCmd = (command: string, value: string | undefined = undefined) => {
@@ -478,20 +513,36 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
   };
 
   // --- AUDIO TRANSCRIPTION ---
+  const initiateTranscription = () => {
+      setShowFileConfirmation(true);
+  };
+
+  const confirmTranscription = () => {
+      setShowFileConfirmation(false);
+      fileInputRef.current?.click();
+  };
+
   const handleAudioFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (!file || !onTranscribe || !activeNoteId) return;
+      if (!file) return;
       
-      setIsAiProcessing(true);
+      if (!onTranscribe || !activeNoteId) {
+          alert("Transcription unavailable or no note selected.");
+          if (fileInputRef.current) fileInputRef.current.value = '';
+          return;
+      }
+      
+      setTranscribing(true);
       onTranscribe(file).then(text => {
           if (editorRef.current) {
               const html = `<p><strong>[Transcript]:</strong> ${text}</p><br/>`;
               execCmd('insertHTML', html);
           }
       }).catch(err => {
-          alert("Transcription failed. " + err.message);
+          alert("Transcription failed. " + (err.message || "Unknown error"));
       }).finally(() => {
-          setIsAiProcessing(false);
+          setTranscribing(false);
+          // Always clear input so we can select same file again if needed
           if (fileInputRef.current) fileInputRef.current.value = '';
       });
   };
@@ -512,15 +563,21 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
   const contentDir = activeNote ? getTextDirection(editorRef.current?.innerText || '') : 'ltr';
 
   const FONT_FAMILIES = [ { label: 'Arial', value: 'Arial' }, { label: 'Arial Black', value: 'Arial Black' }, { label: 'Algerian', value: 'Algerian' }, { label: 'Book Antiqua', value: 'Book Antiqua' }, { label: 'Comic Sans MS', value: 'Comic Sans MS' }, { label: 'Courier New', value: 'Courier New' }, { label: 'Georgia', value: 'Georgia' }, { label: 'Impact', value: 'Impact' }, { label: 'Tahoma', value: 'Tahoma' }, { label: 'Times New Roman', value: 'Times New Roman' }, { label: 'Verdana', value: 'Verdana' } ];
-  // UPDATED FONT SIZES as requested
   const FONT_SIZES = [
-    { label: '8', value: '1' }, // HTML font size 1 is ~8-10px
+    { label: '8', value: '1' }, 
     { label: '10', value: '2' },
     { label: '12', value: '3' },
     { label: '14', value: '4' },
     { label: '18', value: '5' },
     { label: '24', value: '6' },
     { label: '36', value: '7' }
+  ];
+  const BLOCK_TYPES = [
+    { label: 'Normal', value: 'p' },
+    { label: 'Heading 1', value: 'h1', style: { fontWeight: 'bold', fontSize: '1.5em' } },
+    { label: 'Heading 2', value: 'h2', style: { fontWeight: 'bold', fontSize: '1.25em' } },
+    { label: 'Heading 3', value: 'h3', style: { fontWeight: 'bold', fontSize: '1.1em' } },
+    { label: 'Code', value: 'pre', style: { fontFamily: 'monospace' } },
   ];
   const BULLET_STYLES = [ { label: 'Disc', value: 'disc', preview: <div className="flex gap-2 items-center"><span className="text-lg leading-none">•</span> Disc</div> }, { label: 'Circle', value: 'circle', preview: <div className="flex gap-2 items-center"><span className="text-lg leading-none">○</span> Circle</div> }, { label: 'Square', value: 'square', preview: <div className="flex gap-2 items-center"><span className="text-lg leading-none">■</span> Square</div> }, { label: 'Diamond', value: "'◆ '", preview: <div className="flex gap-2 items-center"><span className="text-sm">◆</span> Diamond</div> }, { label: 'Diamond 2', value: "'❖ '", preview: <div className="flex gap-2 items-center"><span className="text-sm">❖</span> Diamond 2</div> }, { label: 'Arrow', value: "'➤ '", preview: <div className="flex gap-2 items-center"><span className="text-sm">➤</span> Arrow</div> }, { label: 'Check', value: "'✓ '", preview: <div className="flex gap-2 items-center"><span className="text-sm">✓</span> Check</div> }, { label: 'Star', value: "'✦ '", preview: <div className="flex gap-2 items-center"><span className="text-sm">✦</span> Star</div> }, ];
   const NUMBER_STYLES = [ { label: '1. 2. 3.', value: 'decimal', preview: <div className="flex gap-2 items-center"><span>1.</span> Decimal</div> }, { label: 'a. b. c.', value: 'lower-alpha', preview: <div className="flex gap-2 items-center"><span>a.</span> Lower Alpha</div> }, { label: 'A. B. C.', value: 'upper-alpha', preview: <div className="flex gap-2 items-center"><span>A.</span> Upper Alpha</div> }, { label: 'i. ii. iii.', value: 'lower-roman', preview: <div className="flex gap-2 items-center"><span>i.</span> Lower Roman</div> }, { label: 'I. II. III.', value: 'upper-roman', preview: <div className="flex gap-2 items-center"><span>I.</span> Upper Roman</div> }, ];
@@ -529,19 +586,49 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
     <div className="flex h-full bg-white dark:bg-gray-900 overflow-hidden" onClick={() => setMenuOpenId(null)}>
       <style>{` .editor-content ul { padding-left: 1.5em !important; margin: 0.5em 0; } .editor-content ol { padding-left: 1.5em !important; margin: 0.5em 0; } .editor-content li { margin-bottom: 0.25em; } .editor-content blockquote { border-left: 4px solid #ddd; padding-left: 1em; color: #666; margin: 1em 0; } .editor-content table { border-collapse: collapse; margin-bottom: 1rem; width: 100%; } .editor-content td { border: 1px solid #ccc; padding: 8px; } .cursor-copy { cursor: copy !important; } `}</style>
 
+      {/* File Confirmation Modal */}
+      {showFileConfirmation && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl border border-gray-200 dark:border-gray-700 transform scale-100">
+                  <div className="flex flex-col items-center text-center mb-6">
+                      <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4 bg-blue-100 text-blue-600">
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8"><path d="M19.5 21a3 3 0 003-3v-4.5a3 3 0 00-3-3h-15a3 3 0 00-3 3V18a3 3 0 003 3h15zM1.5 10.146V6a3 3 0 013-3h5.379a2.25 2.25 0 011.59.659l2.122 2.121c.14.141.331.22.53.22H19.5a3 3 0 013 3v1.146A4.483 4.483 0 0019.5 9h-15a4.483 4.483 0 00-3 1.146z" /></svg>
+                      </div>
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Open Gallery?</h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                          Do you want to access your files or photos to upload for transcription?
+                      </p>
+                  </div>
+                  <div className="flex gap-3 justify-end">
+                      <button onClick={() => setShowFileConfirmation(false)} className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">Cancel</button>
+                      <button onClick={confirmTranscription} className="px-6 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition-colors">Yes, Open</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {/* LEFT SIDEBAR */}
-      <div className={`${activeNoteId ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-80 border-r border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50`}>
-         <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+      <div 
+        className={`${activeNoteId ? 'hidden md:flex' : 'flex'} flex-col border-r border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 relative shrink-0 transition-all duration-300 ease-in-out ${isListVisible ? 'w-80 translate-x-0 opacity-100' : 'w-0 -translate-x-full opacity-0 overflow-hidden'}`}
+      >
+         <div className="p-4 border-b border-gray-200 dark:border-gray-800 min-w-[200px]">
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <button onClick={(e) => { e.preventDefault(); onMenuClick(); }} className="p-2 -ml-2 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg></button>
                   <h2 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2"><span className="text-orange-500">📝</span> Notes</h2>
                 </div>
-                <button onClick={handleCreateNote} className="p-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors shadow-sm"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg></button>
+                <div className="flex items-center gap-1">
+                    <button onClick={handleCreateNote} className="p-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors shadow-sm"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg></button>
+                    {isDesktop && (
+                        <button onClick={() => setIsListVisible(false)} className="p-2 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors" title="Close Sidebar">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5" /></svg>
+                        </button>
+                    )}
+                </div>
             </div>
             <div className="relative"><input type="text" placeholder="Search notes..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" /><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 absolute left-3 top-3 text-gray-400"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg></div>
          </div>
-         <div className="flex-1 overflow-y-auto p-3 space-y-2">
+         <div className="flex-1 overflow-y-auto p-3 space-y-2 min-w-[200px]">
             {filteredNotes.length === 0 ? (<div className="text-center text-gray-400 mt-10 text-sm">No notes found. Create one!</div>) : (filteredNotes.map(note => { const previewText = note.content.replace(/<[^>]+>/g, '').slice(0, 50) || 'No text'; const noteDir = getTextDirection(note.title || previewText); return (
                 <div key={note.id} onClick={() => setActiveNoteId(note.id)} className={`group relative p-4 rounded-xl cursor-pointer transition-all border ${activeNoteId === note.id ? 'bg-white dark:bg-gray-800 border-orange-400 shadow-sm' : 'bg-transparent border-transparent hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
                     <div className="flex justify-between items-start"><h3 dir={noteDir} className={`font-semibold text-sm mb-1 flex-1 ${activeNoteId === note.id ? 'text-gray-900 dark:text-white' : 'text-gray-700 dark:text-gray-300'} ${noteDir === 'rtl' ? 'text-right' : 'text-left'}`}>{note.title || 'Untitled Note'}</h3><div className="relative ml-2"><button onClick={(e) => { e.stopPropagation(); e.preventDefault(); setMenuOpenId(menuOpenId === note.id ? null : note.id); }} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">•••</button>{menuOpenId === note.id && (<div className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-20 overflow-hidden"><button onClick={(e) => handleRenameClick(note.id, note.title, e)} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200">Rename</button><button onClick={(e) => handleCopyContent(note.id, e)} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200">Copy Text</button><button onClick={(e) => handleDuplicateNote(note.id, e)} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200">Duplicate</button><button onClick={(e) => handleDownloadNote(note.id, e)} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200">Download</button><div className="border-t border-gray-100 dark:border-gray-700 my-1"></div><button onClick={(e) => handleDeleteClick(note.id, e)} className="w-full text-left px-4 py-2 text-sm hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400">Delete</button></div>)}</div></div>
@@ -553,34 +640,52 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
       </div>
 
       {/* RIGHT EDITOR */}
-      <div className={`${activeNoteId ? 'flex' : 'hidden md:flex'} flex-1 flex-col bg-white dark:bg-gray-900 relative`}>
+      <div className={`${activeNoteId ? 'flex' : 'hidden md:flex'} flex-1 flex-col bg-white dark:bg-gray-900 relative min-w-0`}>
          {activeNote ? (
             <>
                <div className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 z-10 shrink-0 shadow-sm transition-all duration-300">
                    <div className="flex items-center justify-between p-3 gap-3">
                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                            {/* Mobile Back */}
                             <button onClick={() => setActiveNoteId(null)} className="md:hidden text-gray-500 p-2 -ml-2"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg></button>
+                            
+                            {/* Desktop Toggle Open & Menu Button (When Sidebar Closed) */}
+                            {isDesktop && !isListVisible && (
+                                <>
+                                    <button onClick={onMenuClick} className="text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 p-2 rounded-lg transition-colors" title="Menu">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
+                                    </button>
+                                    <button onClick={() => setIsListVisible(true)} className="text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 p-2 rounded-lg transition-colors mr-2" title="Open Sidebar">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5" /></svg>
+                                    </button>
+                                </>
+                            )}
+
                             <input dir={titleDir} value={activeNote.title} onChange={(e) => updateNote(activeNote.id, { title: e.target.value })} className={`flex-1 bg-transparent text-lg md:text-xl font-bold text-gray-800 dark:text-white placeholder-gray-300 border-none focus:ring-0 min-w-0 p-0 ${titleDir === 'rtl' ? 'text-right' : 'text-left'}`} placeholder="Note Title" />
                        </div>
                        
-                       {/* SAVE BUTTON (New) */}
-                       <button onClick={handleSaveManually} className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 dark:hover:bg-gray-800 rounded-lg transition-colors flex items-center gap-2" title="Save Note">
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3.25a2.25 2.25 0 100 4.5 2.25 2.25 0 000-4.5zM12 7.5V3m0 3v4.5" /></svg>
-                       </button>
+                       <div className="flex items-center gap-1">
+                           <button onClick={handleSaveManually} className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 dark:hover:bg-gray-800 rounded-lg transition-colors flex items-center gap-2" title="Save Note">
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3.25a2.25 2.25 0 100 4.5 2.25 2.25 0 000-4.5zM12 7.5V3m0 3v4.5" /></svg>
+                           </button>
 
-                       <button onClick={handleShareNote} className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-800 rounded-lg transition-colors flex items-center gap-2" title="Share Note">
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" /></svg>
-                       </button>
+                           <button onClick={handleShareNote} className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-800 rounded-lg transition-colors flex items-center gap-2" title="Share Note">
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" /></svg>
+                           </button>
+                       </div>
                    </div>
                    
                    <div className="flex items-center justify-between px-3 pb-2 gap-2 overflow-x-auto no-scrollbar border-t border-dashed border-gray-100 dark:border-gray-800 pt-2">
                         <div className="flex items-center gap-1 md:gap-3">
                              <div className="flex gap-0.5"><ToolbarButton onClick={() => execCmd('undo')} icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>} title="Undo" /><ToolbarButton onClick={() => execCmd('redo')} icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3" /></svg>} title="Redo" /></div>
                              <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-1"></div>
+                             
                              <div className="flex gap-0.5"><ToolbarButton active={isBold} onClick={() => execCmd('bold')} icon={<span className="font-bold serif">B</span>} title="Bold" /><ToolbarButton active={isItalic} onClick={() => execCmd('italic')} icon={<span className="italic serif">I</span>} title="Italic" /><ToolbarButton active={isUnderline} onClick={() => execCmd('underline')} icon={<span className="underline serif">U</span>} title="Underline" /></div>
+                             
                              <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-1"></div>
+
                              <ColorPicker title="Text Color" colorValue={textColor} onChange={(val) => { execCmd('foreColor', val); setTextColor(val); }} icon={<div className="flex flex-col items-center justify-center leading-none"><span className="font-bold text-sm">A</span><div className="w-3 h-1 mt-0.5 rounded-sm transition-colors" style={{ backgroundColor: textColor }}></div></div>} />
-                             <ToolbarButton onClick={handlePaste} icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" /></svg>} title="Paste" />
+                             <ToolbarButton onClick={() => { const url = prompt("Enter link URL:"); if(url) execCmd('createLink', url); }} icon={<svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>} title="Insert Link" />
                         </div>
                         <button onClick={() => setIsExpanded(!isExpanded)} className={`p-1.5 rounded-full transition-all flex items-center justify-center ${isExpanded ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`} title={isExpanded ? "Collapse Tools" : "Expand Tools"}>{isExpanded ? (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M11.47 7.72a.75.75 0 011.06 0l7.5 7.5a.75.75 0 11-1.06 1.06L12 9.31l-6.97 6.97a.75.75 0 01-1.06-1.06l7.5-7.5z" clipRule="evenodd" /></svg>) : (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M12.53 16.28a.75.75 0 01-1.06 0l-7.5-7.5a.75.75 0 011.06-1.06L12 14.69l6.97-6.97a.75.75 0 111.06 1.06l-7.5 7.5z" clipRule="evenodd" /></svg>)}</button>
                    </div>
@@ -588,29 +693,46 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
                    {isExpanded && (
                        <div className="px-3 pb-3 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-800 animate-in slide-in-from-top-2 shadow-inner">
                            <div className="flex flex-wrap items-center gap-3 pt-3">
-                                <div className="flex gap-0.5 items-center border-r border-gray-200 dark:border-gray-700 pr-2">
-                                     <ToolbarButton active={isFormatPainterActive} onClick={toggleFormatPainter} icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.077-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.994 15.994 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.151 1.151 0 00-1.597-1.597L14.146 6.32a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42" /></svg>} title="Format Painter" />
-                                     <ToolbarButton onClick={handleCut} icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" /></svg>} title="Cut" />
-                                     <ToolbarButton onClick={handleCopy} icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5" /></svg>} title="Copy" />
-                                </div>
+                                {/* FONTS & SIZES */}
                                 <div className="flex gap-2 items-center border-r border-gray-200 dark:border-gray-700 pr-2">
                                     <ToolbarSelect width="w-24 md:w-28" value={currentFont} onChange={(val) => { setCurrentFont(val); execCmd('fontName', val); }} options={FONT_FAMILIES} title="Font Family" />
                                     <ToolbarSelect width="w-16" value={currentSize} onChange={(val) => { setCurrentSize(val); execCmd('fontSize', val); }} options={FONT_SIZES} title="Size" />
                                 </div>
-                                <div className="flex gap-1 items-center border-r border-gray-200 dark:border-gray-700 pr-2">
-                                    <ListStylePicker icon={<svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6h2v2H4V6zm0 5h2v2H4v-2zm0 5h2v2H4v-2zM8 6h12v2H8V6zm0 5h12v2H8v-2zm0 5h12v2H8v-2z"/></svg>} options={BULLET_STYLES} onSelect={(val) => applyListStyle(val, false)} title="Bullet Styles" />
-                                    <ListStylePicker icon={<svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6h1.5v2H4V6zm0 5h1.5v2H4v-2zm0 5h1.5v2H4v-2zM7 6h13v2H7V6zm0 5h13v2H7v-2zm0 5h13v2H7v-2z"/></svg>} options={NUMBER_STYLES} onSelect={(val) => applyListStyle(val, true)} title="Numbering Styles" />
+
+                                {/* PARAGRAPH STYLE */}
+                                <div className="flex gap-2 items-center border-r border-gray-200 dark:border-gray-700 pr-2">
+                                    <ToolbarSelect width="w-24" value={currentBlockType} onChange={(val) => { execCmd('formatBlock', val); setCurrentBlockType(val); }} options={BLOCK_TYPES} title="Text Style" />
+                                </div>
+
+                                {/* ALIGNMENT */}
+                                <div className="flex gap-0.5 items-center border-r border-gray-200 dark:border-gray-700 pr-2">
                                      <ToolbarButton active={align === 'left'} onClick={() => execCmd('justifyLeft')} icon={<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3"><path fillRule="evenodd" d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 10.5a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75zM2 10a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 10z" clipRule="evenodd" /></svg>} title="Align Left" />
                                      <ToolbarButton active={align === 'center'} onClick={() => execCmd('justifyCenter')} icon={<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3"><path fillRule="evenodd" d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 10.5a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75zM2 10a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 10z" clipRule="evenodd" /></svg>} title="Align Center" />
                                      <ToolbarButton active={align === 'right'} onClick={() => execCmd('justifyRight')} icon={<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3"><path fillRule="evenodd" d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 10.5a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75zM18 10a.75.75 0 01-.75.75H2.75a.75.75 0 010-1.5h14.5A.75.75 0 0118 10z" clipRule="evenodd" /></svg>} title="Align Right" />
                                      <ToolbarButton active={align === 'justify'} onClick={() => execCmd('justifyFull')} icon={<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3"><path fillRule="evenodd" d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 10.5a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75zM2 10a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 10z" clipRule="evenodd" /></svg>} title="Justify" />
-                                     <ToolbarButton onClick={() => execCmd('indent')} icon={<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3"><path fillRule="evenodd" d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 10.5a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75zM2 10a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 10z" clipRule="evenodd" /></svg>} title="Indent" />
-                                     <ToolbarButton onClick={() => execCmd('outdent')} icon={<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3"><path fillRule="evenodd" d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 10.5a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75zM2 10a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 10z" clipRule="evenodd" /></svg>} title="Outdent" />
                                 </div>
+
+                                {/* LISTS & INDENT */}
+                                <div className="flex gap-1 items-center border-r border-gray-200 dark:border-gray-700 pr-2">
+                                    <ListStylePicker icon={<svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6h2v2H4V6zm0 5h2v2H4v-2zm0 5h2v2H4v-2zM8 6h12v2H8V6zm0 5h12v2H8v-2zm0 5h12v2H8v-2z"/></svg>} options={BULLET_STYLES} onSelect={(val) => applyListStyle(val, false)} title="Bullet Styles" />
+                                    <ListStylePicker icon={<svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6h1.5v2H4V6zm0 5h1.5v2H4v-2zm0 5h1.5v2H4v-2zM7 6h13v2H7V6zm0 5h13v2H7v-2zm0 5h13v2H7v-2z"/></svg>} options={NUMBER_STYLES} onSelect={(val) => applyListStyle(val, true)} title="Numbering Styles" />
+                                    <ToolbarButton onClick={() => execCmd('indent')} icon={<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3"><path fillRule="evenodd" d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 10.5a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75zM2 10a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 10z" clipRule="evenodd" /></svg>} title="Indent" />
+                                    <ToolbarButton onClick={() => execCmd('outdent')} icon={<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3"><path fillRule="evenodd" d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 10.5a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75zM2 10a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 10z" clipRule="evenodd" /></svg>} title="Outdent" />
+                                </div>
+
+                                {/* EDITING TOOLS */}
+                                <div className="flex gap-0.5 items-center border-r border-gray-200 dark:border-gray-700 pr-2">
+                                     <ToolbarButton active={isFormatPainterActive} onClick={toggleFormatPainter} icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.077-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.994 15.994 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.151 1.151 0 00-1.597-1.597L14.146 6.32a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42" /></svg>} title="Format Painter" />
+                                     <ToolbarButton onClick={handleCut} icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" /></svg>} title="Cut" />
+                                     <ToolbarButton onClick={handleCopy} icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5" /></svg>} title="Copy" />
+                                     <ToolbarButton onClick={handlePaste} icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" /></svg>} title="Paste" />
+                                </div>
+
+                                {/* INSERTS & FORMATTING */}
                                 <div className="flex gap-1 items-center border-r border-gray-200 dark:border-gray-700 pr-2">
                                     <ColorPicker title="Highlight Color" colorValue={hiliteColor} onChange={(val) => { execCmd('hiliteColor', val); setHiliteColor(val); }} icon={<div className="flex flex-col items-center justify-center leading-none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg><div className="w-3 h-1 mt-0.5 rounded-sm transition-colors" style={{ backgroundColor: hiliteColor }}></div></div>} />
                                     <TableGridPicker onSelect={(r, c) => insertTable(r, c, true)} onOpenManual={() => setShowTableModal(true)} />
-                                    <ToolbarButton onClick={() => { const url = prompt("Enter link URL:"); if(url) execCmd('createLink', url); }} icon={<svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>} title="Insert Link" />
+                                    <ToolbarButton onClick={() => execCmd('insertHorizontalRule')} icon={<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M3 12a.75.75 0 01.75-.75h16.5a.75.75 0 010 1.5H3.75A.75.75 0 013 12z" clipRule="evenodd" /></svg>} title="Horizontal Line" />
                                     <ToolbarButton onClick={() => execCmd('formatBlock', 'blockquote')} icon={<span className="font-serif font-bold text-lg">“</span>} title="Blockquote" />
                                     <ToolbarButton active={isSub} onClick={() => execCmd('subscript')} icon={<span className="text-xs">x₂</span>} title="Subscript" />
                                     <ToolbarButton active={isSuper} onClick={() => execCmd('superscript')} icon={<span className="text-xs">x²</span>} title="Superscript" />
@@ -619,7 +741,7 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
                                 </div>
 
                                 {/* AUTO SAVE TOGGLE */}
-                                <div className="flex gap-2 items-center border-r border-gray-200 dark:border-gray-700 pr-2">
+                                <div className="flex gap-2 items-center ml-auto">
                                     <button 
                                       onClick={() => setAutoSaveEnabled(!autoSaveEnabled)} 
                                       className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${autoSaveEnabled ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-500'}`}
@@ -629,17 +751,26 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
                                     </button>
                                 </div>
 
-                                {/* AI Tools & Audio Transcription */}
-                                <div className="flex gap-1 ml-auto border-l border-gray-200 dark:border-gray-700 pl-2">
-                                    {/* AUDIO TRANSCRIBE BUTTON */}
-                                    <button onClick={() => fileInputRef.current?.click()} disabled={isAiProcessing} className="p-1.5 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors" title="Transcribe Audio">
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" /></svg>
+                                {/* AI Tools & Audio Transcription (Moved to end of expanded for better flow) */}
+                                <div className="flex gap-1 border-l border-gray-200 dark:border-gray-700 pl-2">
+                                    <button onClick={initiateTranscription} disabled={isAiProcessing || transcribing} className={`p-1.5 rounded-lg transition-colors flex items-center gap-2 ${transcribing ? 'bg-orange-100 text-orange-600 animate-pulse' : 'text-gray-500 hover:text-orange-600 hover:bg-orange-50'}`} title="Transcribe Audio">
+                                        {transcribing ? (
+                                            <>
+                                                <div className="w-3 h-3 border-2 border-orange-600 border-t-transparent rounded-full animate-spin"></div>
+                                                <span className="text-xs font-medium">Transcribing...</span>
+                                            </>
+                                        ) : (
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" /></svg>
+                                        )}
                                     </button>
                                     <input type="file" ref={fileInputRef} onChange={handleAudioFileSelect} accept="audio/*" className="hidden" />
 
                                     <button onClick={() => handleAiAction('grammar')} disabled={isAiProcessing} className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Fix Grammar">✨</button>
                                     <button onClick={() => handleAiAction('summarize')} disabled={isAiProcessing} className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Summarize">📝</button>
                                     <button onClick={() => setShowTranslate(!showTranslate)} disabled={isAiProcessing} className={`p-1.5 rounded-lg transition-colors ${showTranslate ? 'text-green-600 bg-green-50' : 'text-gray-500 hover:text-green-600'}`} title="Translate">🌐</button>
+                                    {onStartLive && (
+                                        <button onClick={onStartLive} className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Live Conversation">🎙️</button>
+                                    )}
                                 </div>
                            </div>
                            
@@ -682,7 +813,7 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
 
                {/* Status */}
                <div className="absolute bottom-4 right-6 text-xs text-gray-300 dark:text-gray-600 pointer-events-none bg-white/80 dark:bg-gray-900/80 px-2 py-1 rounded">
-                  {isAiProcessing ? "AI is thinking..." : (autoSaveEnabled ? "Saved" : "Unsaved")}
+                  {isAiProcessing || transcribing ? "Processing..." : (autoSaveEnabled ? "Saved" : "Unsaved")}
                </div>
 
                {/* MANUAL TABLE DIALOG */}
@@ -693,7 +824,7 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Insert Table</h3>
                                <button onClick={() => setShowTableModal(false)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white">
                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                               </button>
+                                </button>
                            </div>
                            <div className="space-y-4">
                                <div className="grid grid-cols-2 gap-4">
@@ -708,11 +839,29 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
                )}
             </>
          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-gray-300 dark:text-gray-700">
+            <div className="flex-1 flex flex-col items-center justify-center text-gray-300 dark:text-gray-700 relative">
+               {/* Controls if sidebar closed */}
+               {isDesktop && !isListVisible && (
+                   <div className="absolute top-3 left-3 flex gap-2">
+                        <button onClick={onMenuClick} className="text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 p-2 rounded-lg transition-colors" title="Menu">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
+                        </button>
+                        <button onClick={() => setIsListVisible(true)} className="text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 p-2 rounded-lg transition-colors" title="Open Sidebar">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5" /></svg>
+                        </button>
+                   </div>
+               )}
+
                <div className="w-20 h-20 bg-gray-50 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
                   <span className="text-4xl text-gray-200 dark:text-gray-600">✎</span>
                </div>
                <p>Select a note or create a new one</p>
+               
+               {!isListVisible && (
+                   <button onClick={() => setIsListVisible(true)} className="mt-6 px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-sm font-medium">
+                       Open Notes List
+                   </button>
+               )}
             </div>
          )}
       </div>

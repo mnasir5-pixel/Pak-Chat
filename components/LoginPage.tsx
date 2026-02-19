@@ -1,426 +1,488 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { User } from '../types';
+import { Mail, Lock, User as UserIcon, ShieldCheck, ArrowRight, Eye, EyeOff, AlertCircle, CheckCircle2, ChevronLeft, Fingerprint, Sparkles, BellRing, Copy, X as CloseIcon, ClipboardPaste } from 'lucide-react';
 
 interface LoginPageProps {
-  onLogin: (email: string) => void;
+  onLogin: (user: User) => void;
 }
 
-type AuthMode = 'login' | 'sign-up' | 'verify' | 'forgot' | 'reset-password';
+type AuthMode = 'login' | 'sign-up' | 'verify';
+
+// List of common disposable/dummy email domains to block
+const BLACKLISTED_DOMAINS = [
+  'ali.com', 'test.com', 'example.com', 'mailinator.com', 'yopmail.com', 
+  'temp-mail.org', 'tempmail.com', 'guerrillamail.com', 'sharklasers.com', 
+  'dispostable.com', '10minutemail.com', 'trashmail.com', 'getnada.com', 
+  'maildrop.cc', 'teleworm.us', 'dayrep.com', 'rhyta.com', 'dummy.com', 
+  'placeholder.com', 'anonbox.net', 'fakeinbox.com', 'tempmail.net'
+];
+
+const DUMMY_PREFIXES = ['abc', 'test', 'user', 'admin', '123', 'guest', 'none', 'null'];
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
-  // --- CORE STATE ---
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  
-  // --- VERIFICATION STATE ---
-  const [verificationCode, setVerificationCode] = useState('');
-  const [generatedCode, setGeneratedCode] = useState<string | null>(null);
-  const [captchaAnswer, setCaptchaAnswer] = useState('');
-  const [captchaProblem, setCaptchaProblem] = useState({ q: '2 + 2', a: 4 });
-  const [isCaptchaSolved, setIsCaptchaSolved] = useState(false);
-  const [showDemoCode, setShowDemoCode] = useState(false);
-  const [verificationContext, setVerificationContext] = useState<'signup' | 'reset'>('signup');
-
-  // --- UI STATE ---
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
-  
-  // Password Visibility State
+  const [name, setName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
-  const [passwordStrength, setPasswordStrength] = useState(0);
+  // Verification States
+  const [verificationCode, setVerificationCode] = useState(['', '', '', '', '', '']);
+  const [sentCode, setSentCode] = useState<string | null>(null);
+  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // --- TIMERS ---
-  const [timer, setTimer] = useState(0);
+  // Simulation State
+  const [showNotification, setShowNotification] = useState(false);
+  const [notificationMsg, setNotificationMsg] = useState('');
 
-  // --- EFFECTS ---
-  useEffect(() => {
-      const n1 = Math.floor(Math.random() * 10);
-      const n2 = Math.floor(Math.random() * 10);
-      setCaptchaProblem({ q: `${n1} + ${n2}`, a: n1 + n2 });
-  }, [mode]);
+  // Password Strength State
+  const [strength, setStrength] = useState({ score: 0, label: 'Weak', color: 'bg-gray-200' });
 
-  useEffect(() => {
+  const evaluatePassword = (pass: string) => {
     let score = 0;
-    if (password.length > 5) score++;
-    if (password.length > 8) score++;
-    if (/[0-9]/.test(password)) score++;
-    if (/[^A-Za-z0-9]/.test(password)) score++;
-    setPasswordStrength(score);
-  }, [password]);
-
-  useEffect(() => {
-    let interval: any;
-    if (timer > 0) {
-      interval = setInterval(() => setTimer((prev) => prev - 1), 1000);
-    }
-    return () => clearInterval(interval);
-  }, [timer]);
-
-  // --- HELPER FUNCTIONS ---
-  const isValidEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
-
-  const startVerification = (targetEmail: string, context: 'signup' | 'reset') => {
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedCode(code);
-      setTimer(30);
-      setIsCaptchaSolved(false); 
-      setShowDemoCode(false);
-      setVerificationContext(context);
-      setMode('verify');
-      setSuccessMsg(`Verification code sent to ${targetEmail}`);
-      setVerificationCode('');
+    if (pass.length >= 8) score++;
+    if (/[A-Z]/.test(pass)) score++;
+    if (/[0-9]/.test(pass)) score++;
+    if (/[^A-Za-z0-9]/.test(pass)) score++;
+    
+    if (score <= 1) setStrength({ score: 1, label: 'Unsafe', color: 'bg-red-500' });
+    else if (score === 2) setStrength({ score: 2, label: 'Fair', color: 'bg-yellow-500' });
+    else if (score === 3) setStrength({ score: 3, label: 'Strong', color: 'bg-emerald-500' });
+    else setStrength({ score: 4, label: 'Military Grade', color: 'bg-blue-500' });
   };
 
-  // --- AUTH HANDLERS ---
-  const handleStandardAuth = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (mode === 'sign-up') evaluatePassword(password);
+  }, [password, mode]);
+
+  const triggerSimulatedEmail = (code: string) => {
+    setTimeout(() => {
+        setNotificationMsg(`📧 Verification Code: ${code}`);
+        setShowNotification(true);
+    }, 2500);
+  };
+
+  /**
+   * Enhanced Email Validation
+   * Rejects disposable, dummy, and malformed addresses
+   */
+  const validateRealEmail = (emailStr: string): { isValid: boolean; message?: string } => {
+    const trimmedEmail = emailStr.trim().toLowerCase();
+    
+    // 1. Basic Structure Check
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      return { isValid: false, message: "Please provide a structurally valid email address (e.g., user@domain.com)." };
+    }
+
+    const [localPart, domainPart] = trimmedEmail.split('@');
+
+    // 2. Dummy Prefix Check (e.g., abc@...)
+    if (DUMMY_PREFIXES.includes(localPart) || localPart.length < 3) {
+      return { isValid: false, message: "Security Notice: Generic or 'dummy' email prefixes are not permitted. Please use a legitimate identifier." };
+    }
+
+    // 3. Blacklisted Domain Check (Disposable/Dummy domains)
+    if (BLACKLISTED_DOMAINS.includes(domainPart)) {
+      return { isValid: false, message: `System Notice: The domain '${domainPart}' is flagged as disposable or a placeholder. Please use a valid personal (Gmail, Outlook) or professional provider.` };
+    }
+
+    return { isValid: true };
+  };
+
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    
-    if (!isValidEmail(email)) { setError("Please enter a valid email address."); return; }
-    
-    if (mode === 'sign-up') {
-        if (password.length < 6) { setError("Password too short (min 6 chars)."); return; }
-        if (password !== confirmPassword) { setError("Passwords do not match."); return; }
+    setError(null);
+
+    // Validate Email first
+    const emailValidation = validateRealEmail(email);
+    if (!emailValidation.isValid) {
+        setError(emailValidation.message || "Invalid Email");
+        return;
     }
 
     setIsLoading(true);
 
-    setTimeout(() => {
-        const users = JSON.parse(localStorage.getItem('pakchat_users_db') || '{}');
+    // Simulated network delay
+    await new Promise(r => setTimeout(r, 1200));
 
-        if (mode === 'sign-up') {
-            if (users[email]) {
-                setError("Account already exists on this device. Please login.");
-                setIsLoading(false);
-            } else {
-                startVerification(email, 'signup');
-                setIsLoading(false);
-            }
-        } else if (mode === 'login') {
-            if (users[email] && users[email].password === password) {
-                onLogin(email);
-            } else {
-                setError("Invalid email or password.");
-            }
-            setIsLoading(false);
-        } else if (mode === 'forgot') {
-            if (users[email]) {
-                startVerification(email, 'reset');
-            } else {
-                setError("No account found with this email.");
-            }
-            setIsLoading(false);
-        }
-    }, 800);
-  };
+    const usersDb: Record<string, User> = JSON.parse(localStorage.getItem('pakchat_users_db') || '{}');
 
-  const verifyCode = () => {
-      if (!isCaptchaSolved) { setError("Please solve the puzzle first."); return; }
+    if (mode === 'login') {
+      const user = usersDb[email.toLowerCase()];
+      if (user && user.password === password) {
+        onLogin(user);
+      } else {
+        setError("The email or password you entered is incorrect. Please try again.");
+        setIsLoading(false);
+      }
+    } else if (mode === 'sign-up') {
+      // Confirm Password Match
+      if (password !== confirmPassword) {
+        setError("Your passwords do not match. Please verify and try again.");
+        setIsLoading(false);
+        return;
+      }
+
+      if (strength.score < 3) {
+        setError("Security Policy: Your password must be stronger. Please use uppercase, numbers, and a symbol.");
+        setIsLoading(false);
+        return;
+      }
       
-      if (verificationCode === generatedCode) {
-          if (verificationContext === 'signup') {
-              const users = JSON.parse(localStorage.getItem('pakchat_users_db') || '{}');
-              users[email] = { password, createdAt: Date.now(), verified: true };
-              localStorage.setItem('pakchat_users_db', JSON.stringify(users));
-              
-              setSuccessMsg("Verified! Logging in...");
-              setTimeout(() => onLogin(email), 800);
-          } else {
-              // Reset Password Context
-              setSuccessMsg("Verified. Please set a new password.");
-              setMode('reset-password');
-              setPassword('');
-              setConfirmPassword('');
-          }
-      } else {
-          setError("Invalid code. Please try again.");
+      if (usersDb[email.toLowerCase()]) {
+        setError("An account with this email already exists. Try logging in.");
+        setIsLoading(false);
+        return;
+      }
+
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      setSentCode(code);
+      setMode('verify');
+      setIsLoading(false);
+      
+      triggerSimulatedEmail(code);
+    }
+  };
+
+  const handleVerify = (enteredCodeOverride?: string) => {
+    const entered = enteredCodeOverride || verificationCode.join('');
+    if (entered === sentCode) {
+      const newUser: User = {
+        email: email.toLowerCase(),
+        name,
+        password,
+        createdAt: Date.now(),
+        verified: true,
+        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`
+      };
+      const usersDb = JSON.parse(localStorage.getItem('pakchat_users_db') || '{}');
+      usersDb[newUser.email] = newUser;
+      localStorage.setItem('pakchat_users_db', JSON.stringify(usersDb));
+      onLogin(newUser);
+    } else {
+      setError("Incorrect verification code. Please check the notification at the top of your screen.");
+    }
+  };
+
+  const handleOtpChange = (index: number, val: string) => {
+    if (isNaN(Number(val))) return;
+    const newCode = [...verificationCode];
+    const digit = val.slice(-1);
+    newCode[index] = digit;
+    setVerificationCode(newCode);
+    
+    if (digit && index < 5) {
+        otpRefs.current[index + 1]?.focus();
+    } else if (digit && index === 5) {
+        // Automatic submission when 6th digit is entered manually
+        const finalCode = newCode.join('');
+        if (finalCode.length === 6) {
+            handleVerify(finalCode);
+        }
+    }
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent) => {
+    const data = e.clipboardData.getData('text').trim();
+    if (data.length === 6 && !isNaN(Number(data))) {
+        setVerificationCode(data.split(''));
+        otpRefs.current[5]?.focus();
+        // Automatic submission on paste
+        handleVerify(data);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+      const codeOnly = text.split(': ')[1];
+      if (codeOnly) {
+        navigator.clipboard.writeText(codeOnly);
+        setShowNotification(false);
       }
   };
 
-  const handlePasswordReset = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (password.length < 6) { setError("Password too short."); return; }
-      if (password !== confirmPassword) { setError("Passwords do not match."); return; }
-
-      const users = JSON.parse(localStorage.getItem('pakchat_users_db') || '{}');
-      if (users[email]) {
-          users[email].password = password;
-          localStorage.setItem('pakchat_users_db', JSON.stringify(users));
-          setSuccessMsg("Password updated! Please login.");
-          setTimeout(() => {
-              setMode('login');
-              setPassword('');
-              setConfirmPassword('');
-              setSuccessMsg('');
-          }, 1500);
-      } else {
-          setError("Error updating account.");
-      }
-  };
-
-  // --- RENDER VERIFICATION ---
-  if (mode === 'verify') {
-      return (
-        <div className="min-h-screen w-full flex items-center justify-center bg-gray-50 dark:bg-[#0f172a] p-4">
-            <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-3xl shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden animate-in fade-in zoom-in duration-300 p-8">
-                
-                <button onClick={() => setMode(verificationContext === 'signup' ? 'sign-up' : 'forgot')} className="mb-6 flex items-center gap-2 text-sm text-gray-500 hover:text-indigo-600 transition-colors">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                    Back
-                </button>
-
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Verify it's you</h2>
-                <p className="text-sm text-gray-500 mb-6">Complete the puzzle to view your verification code.</p>
-
-                {error && <div className="mb-4 text-xs text-red-500 bg-red-50 p-2 rounded border border-red-100">{error}</div>}
-                {successMsg && <div className="mb-4 text-xs text-green-600 bg-green-50 p-2 rounded border border-green-100">{successMsg}</div>}
-
-                {/* STEP 1: CAPTCHA */}
-                <div className={`mb-6 p-4 rounded-xl border-2 transition-all ${isCaptchaSolved ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
-                    <div className="flex items-center justify-between mb-3">
-                        <span className="text-xs font-bold uppercase text-gray-500 tracking-wider">Human Check</span>
-                        {isCaptchaSolved && <span className="text-green-600 font-bold">✓ Verified</span>}
-                    </div>
-                    
-                    {!isCaptchaSolved ? (
-                        <div className="flex gap-3">
-                            <div className="flex-1 bg-gray-100 dark:bg-gray-900 rounded-lg flex items-center justify-center font-mono text-lg font-bold tracking-widest text-gray-700 dark:text-gray-300">
-                                {captchaProblem.q} = ?
-                            </div>
-                            <input 
-                                type="number" 
-                                value={captchaAnswer}
-                                onChange={(e) => {
-                                    setCaptchaAnswer(e.target.value);
-                                    if (parseInt(e.target.value) === captchaProblem.a) setIsCaptchaSolved(true);
-                                }}
-                                className="w-20 p-2 text-center border border-gray-300 dark:border-gray-600 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
-                                placeholder="?"
-                            />
-                        </div>
-                    ) : (
-                        <p className="text-sm text-green-700 dark:text-green-400">Puzzle solved. You may proceed.</p>
-                    )}
-                </div>
-
-                {/* STEP 2: CODE INPUT */}
-                <div className={`transition-all duration-300 ${!isCaptchaSolved ? 'opacity-50 pointer-events-none filter blur-[1px]' : 'opacity-100'}`}>
-                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase">Verification Code</label>
-                    <div className="relative">
-                        <input 
-                            type="text" 
-                            value={verificationCode}
-                            onChange={(e) => setVerificationCode(e.target.value)}
-                            placeholder="Enter 6-digit code"
-                            className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-center tracking-widest text-lg font-mono"
-                            maxLength={6}
-                        />
-                        {isCaptchaSolved && (
-                            <div className="absolute right-2 top-2 bottom-2">
-                                <button 
-                                    onClick={() => setShowDemoCode(!showDemoCode)}
-                                    className="h-full px-3 text-[10px] font-bold bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors"
-                                >
-                                    {showDemoCode ? generatedCode : "Get Key"}
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                    <p className="text-[10px] text-gray-400 mt-2 text-center">
-                        {showDemoCode ? "Use the key displayed above." : "Click 'Get Key' to obtain your access code."}
-                    </p>
-                </div>
-
-                <button 
-                    onClick={verifyCode}
-                    disabled={!isCaptchaSolved || verificationCode.length !== 6}
-                    className="w-full mt-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                >
-                    {verificationContext === 'signup' ? 'Complete Sign Up' : 'Verify & Reset'}
-                </button>
-            </div>
-        </div>
-      );
-  }
-
-  // --- RENDER RESET PASSWORD ---
-  if (mode === 'reset-password') {
-      return (
-        <div className="min-h-screen w-full flex items-center justify-center bg-gray-50 dark:bg-[#0f172a] p-4">
-            <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-3xl shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden animate-in fade-in zoom-in duration-300 p-8">
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Reset Password</h2>
-                <p className="text-sm text-gray-500 mb-6">Create a new secure password for {email}</p>
-
-                {error && <div className="mb-4 text-xs text-red-500 bg-red-50 p-2 rounded border border-red-100">{error}</div>}
-
-                <form onSubmit={handlePasswordReset} className="space-y-4">
-                    <div>
-                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase mb-1 ml-1">New Password</label>
-                        <div className="relative">
-                            <input 
-                                type={showPassword ? "text" : "password"} 
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                                placeholder="••••••••"
-                                required 
-                            />
-                            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600">
-                                {showPassword ? <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg> : <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>}
-                            </button>
-                        </div>
-                        <div className="flex gap-1 h-1 mt-2">
-                            {[1,2,3,4].map(l => <div key={l} className={`flex-1 rounded-full transition-all duration-300 ${passwordStrength >= l ? (passwordStrength < 3 ? 'bg-orange-400' : 'bg-green-500') : 'bg-gray-200 dark:bg-gray-700'}`}></div>)}
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase mb-1 ml-1">Confirm Password</label>
-                        <div className="relative">
-                            <input 
-                                type={showConfirmPassword ? "text" : "password"} 
-                                value={confirmPassword}
-                                onChange={(e) => setConfirmPassword(e.target.value)}
-                                className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                                placeholder="••••••••"
-                                required 
-                            />
-                            <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600">
-                                {showConfirmPassword ? <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg> : <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>}
-                            </button>
-                        </div>
-                    </div>
-                    <button type="submit" className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg mt-4">
-                        Update Password
-                    </button>
-                </form>
-            </div>
-        </div>
-      );
-  }
-
-  // 3. MAIN LOGIN / SIGNUP / FORGOT VIEW
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gray-50 dark:bg-[#0f172a] p-4 font-sans">
-      <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-3xl shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden animate-in fade-in zoom-in duration-300 relative">
+    <div className="min-h-screen w-full flex bg-[#fbfcfd] dark:bg-[#020203] font-sans selection:bg-blue-100 dark:selection:bg-blue-900/30 overflow-hidden relative">
+      
+      {/* Simulated Email Notification Toast */}
+      {showNotification && (
+          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[2000] w-full max-w-sm px-4 animate-in slide-in-from-top-12 duration-500">
+              <div className="bg-white/90 dark:bg-[#121218]/90 backdrop-blur-2xl border border-blue-500/20 rounded-3xl p-4 shadow-[0_20px_50px_-10px_rgba(59,130,246,0.3)] flex items-center justify-between gap-4 ring-1 ring-blue-500/10">
+                  <div className="flex items-center gap-4">
+                      <div className="p-3 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-500/20">
+                          <BellRing size={20} className="animate-bounce" />
+                      </div>
+                      <div className="min-w-0">
+                          <p className="text-[10px] font-black uppercase text-blue-600 tracking-widest mb-0.5">Inbox: Pak Chat Auth</p>
+                          <p className="text-sm font-bold text-gray-800 dark:text-white truncate">{notificationMsg}</p>
+                      </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                      <button 
+                        onClick={() => copyToClipboard(notificationMsg)}
+                        className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
+                        title="Copy Code"
+                      >
+                          <Copy size={18} />
+                      </button>
+                      <button 
+                        onClick={() => setShowNotification(false)}
+                        className="p-2 text-gray-300 hover:text-red-500 transition-colors"
+                      >
+                          <CloseIcon size={18} />
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Visual Identity Side */}
+      <div className="hidden lg:flex w-1/2 bg-[#0a66c2] relative overflow-hidden items-center justify-center">
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-900 opacity-95"></div>
+        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_20%_30%,_rgba(255,255,255,0.05)_0%,_transparent_70%)]"></div>
         
-        <div className="px-8 pt-8 pb-6">
-            <div className="text-center mb-8">
-                <div className="w-14 h-14 bg-gradient-to-br from-indigo-600 to-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg text-white font-bold text-2xl">P</div>
-                <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                    {mode === 'login' ? 'Welcome Back' : mode === 'forgot' ? 'Reset Password' : 'Get Started'}
-                </h1>
-                <p className="text-gray-500 text-sm">
-                    {mode === 'forgot' ? "Enter your email to receive a recovery code." : "Use your email or social account to continue."}
-                </p>
+        <div className="relative z-10 p-16 text-white max-w-xl">
+          <div className="w-20 h-20 bg-white/10 backdrop-blur-2xl rounded-3xl flex items-center justify-center mb-10 border border-white/20 shadow-2xl animate-pulse">
+            <Fingerprint size={44} strokeWidth={1.5} className="text-white" />
+          </div>
+          <h1 className="text-6xl font-black mb-8 leading-[0.95] tracking-tighter uppercase">Nexus of <br/>Intelligence.</h1>
+          <p className="text-blue-100 text-xl font-medium leading-relaxed mb-10 opacity-80">
+            "Your workspace is persistent, your data is private, and your intelligence is amplified."
+          </p>
+          <div className="flex items-center gap-6 py-8 border-t border-white/10">
+            <div className="flex -space-x-3">
+              {[1,2,3,4].map(i => (
+                <div key={i} className="w-12 h-12 rounded-full border-2 border-blue-600 bg-gray-800 overflow-hidden shadow-xl">
+                  <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${i + 40}`} alt="User" />
+                </div>
+              ))}
             </div>
+            <span className="text-sm font-black uppercase tracking-widest text-blue-200">Synchronized with 50K+ Thinkers</span>
+          </div>
+        </div>
+      </div>
 
-            {error && (
-                <div className="mb-5 p-3 bg-red-50 text-red-600 text-xs rounded-lg flex gap-2 items-center border border-red-100">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    {error}
-                </div>
-            )}
-            {successMsg && (
-                <div className="mb-5 p-3 bg-green-50 text-green-600 text-xs rounded-lg flex gap-2 items-center border border-green-100">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                    {successMsg}
-                </div>
-            )}
+      {/* Form Content Side */}
+      <div className="flex-1 flex items-center justify-center p-6 sm:p-12 relative overflow-y-auto no-scrollbar">
+        <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-6 duration-700 py-10">
+          
+          {mode === 'verify' ? (
+            <div className="space-y-10 text-center">
+               <div className="inline-flex p-6 bg-blue-50 dark:bg-blue-950/30 rounded-[2.5rem] text-blue-600 border border-blue-100 dark:border-blue-900/50 mb-4 shadow-xl shadow-blue-500/10">
+                 <ShieldCheck size={48} strokeWidth={2.5} />
+               </div>
+               <div>
+                 <h2 className="text-4xl font-black text-gray-900 dark:text-white uppercase tracking-tighter mb-4">Validate Access</h2>
+                 <p className="text-gray-500 dark:text-gray-400 font-medium leading-relaxed">
+                   Enter the 6-digit security code sent to <br/>
+                   <span className="text-blue-600 font-bold">{email}</span>
+                 </p>
+                 <p className="text-[10px] font-black uppercase text-gray-400 mt-4 tracking-[0.2em] animate-pulse">Waiting for incoming transmission...</p>
+               </div>
 
-            {/* MAIN FORM */}
-            <form onSubmit={handleStandardAuth} className="space-y-4">
-                <div>
-                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase mb-1 ml-1">Email Address</label>
-                    <input 
-                        type="email" 
-                        name="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                        placeholder="you@example.com"
-                        required 
-                    />
-                </div>
+               <div className="relative group">
+                 <div className="flex justify-center gap-2 sm:gap-3" onPaste={handleOtpPaste}>
+                   {verificationCode.map((digit, idx) => (
+                     <input
+                       key={idx}
+                       ref={el => { otpRefs.current[idx] = el; }}
+                       type="text"
+                       inputMode="numeric"
+                       maxLength={1}
+                       value={digit}
+                       onChange={(e) => handleOtpChange(idx, e.target.value)}
+                       onKeyDown={(e) => {
+                         if (e.key === 'Backspace' && !digit && idx > 0) otpRefs.current[idx - 1]?.focus();
+                       }}
+                       className="w-10 h-14 sm:w-14 sm:h-20 text-center text-3xl font-black border-2 border-gray-100 dark:border-white/5 rounded-2xl bg-white dark:bg-[#0a0a0f] text-gray-900 dark:text-white focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all shadow-sm"
+                     />
+                   ))}
+                 </div>
+               </div>
 
-                {mode !== 'forgot' && (
-                    <div>
-                        <div className="flex justify-between items-center mb-1 ml-1">
-                            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">Password</label>
-                            {mode === 'login' && (
-                                <button type="button" onClick={() => { setMode('forgot'); setError(''); }} className="text-xs text-indigo-600 hover:text-indigo-800">
-                                    Forgot Password?
-                                </button>
-                            )}
-                        </div>
-                        <div className="relative">
-                            <input 
-                                type={showPassword ? "text" : "password"} 
-                                name="password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                                placeholder="••••••••"
-                                required 
-                            />
-                            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600">
-                                {showPassword ? <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg> : <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>}
-                            </button>
-                        </div>
-                        {mode === 'sign-up' && (
-                            <>
-                                <div className="mt-3 mb-2">
-                                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase mb-1 ml-1">Confirm Password</label>
-                                    <div className="relative">
-                                        <input 
-                                            type={showConfirmPassword ? "text" : "password"} 
-                                            value={confirmPassword} 
-                                            onChange={(e) => setConfirmPassword(e.target.value)} 
-                                            className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
-                                            placeholder="••••••••" 
-                                            required 
-                                        />
-                                        <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600">
-                                            {showConfirmPassword ? <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg> : <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>}
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="flex gap-1 h-1 mt-2">
-                                    {[1,2,3,4].map(l => <div key={l} className={`flex-1 rounded-full transition-all duration-300 ${passwordStrength >= l ? (passwordStrength < 3 ? 'bg-orange-400' : 'bg-green-500') : 'bg-gray-200 dark:bg-gray-700'}`}></div>)}
-                                </div>
-                            </>
-                        )}
+               {error && (
+                 <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/40 rounded-2xl flex items-start gap-3 text-red-600 dark:text-red-400 text-sm animate-in shake duration-300">
+                   <AlertCircle size={18} className="shrink-0 mt-0.5" />
+                   <p className="font-medium text-left leading-relaxed">{error}</p>
+                 </div>
+               )}
+
+               <div className="space-y-4 pt-4">
+                 <button 
+                  onClick={() => handleVerify()}
+                  className="w-full py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-[1.5rem] font-black uppercase tracking-[0.2em] text-xs shadow-2xl shadow-blue-500/30 transition-all active:scale-95"
+                 >
+                   Manual Synchronize
+                 </button>
+                 <div className="flex flex-col gap-2">
+                    <button 
+                        onClick={() => { if(sentCode) triggerSimulatedEmail(sentCode); }}
+                        className="text-[10px] font-black text-blue-500 hover:text-blue-600 uppercase tracking-widest transition-colors flex items-center justify-center gap-2 mx-auto"
+                    >
+                        Didn't receive a notification? Resend
+                    </button>
+                    <button onClick={() => { setMode('sign-up'); setError(null); }} className="text-[10px] font-black text-gray-400 hover:text-blue-600 uppercase tracking-widest transition-colors flex items-center justify-center gap-2 mx-auto">
+                    <ChevronLeft size={14} /> Incorrect email address
+                    </button>
+                 </div>
+               </div>
+            </div>
+          ) : (
+            <>
+              <div className="mb-12 lg:text-left text-center">
+                <div className="lg:hidden w-16 h-16 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-8 text-white shadow-2xl">
+                    <Fingerprint size={32} />
+                </div>
+                <h2 className="text-5xl font-black text-gray-900 dark:text-white uppercase tracking-tighter leading-[0.9] mb-4">
+                  {mode === 'login' ? 'Authentication' : 'Registration'}
+                </h2>
+                <p className="text-gray-500 dark:text-gray-400 font-medium text-lg italic">
+                  {mode === 'login' ? 'Continue your intelligent journey.' : 'Initialize your private intelligence workspace.'}
+                </p>
+              </div>
+
+              {error && (
+                <div className="mb-8 p-5 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 rounded-3xl flex items-start gap-4 text-red-600 dark:text-red-400 text-sm animate-in slide-in-from-top-4">
+                  <AlertCircle size={20} className="shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-black uppercase text-[10px] tracking-widest mb-1">Authorization Notice</p>
+                    <p className="font-medium leading-relaxed">{error}</p>
+                  </div>
+                </div>
+              )}
+
+              <form onSubmit={handleAuth} className="space-y-6">
+                {mode === 'sign-up' && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] ml-1">Identity Display Name</label>
+                    <div className="relative group">
+                      <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" size={20} />
+                      <input 
+                        type="text" 
+                        value={name} 
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="John Doe"
+                        className="w-full pl-12 pr-4 py-5 bg-white dark:bg-[#0a0a0f] border border-gray-200 dark:border-white/5 rounded-[1.2rem] outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-bold text-sm"
+                        required
+                      />
                     </div>
+                  </div>
                 )}
 
-                <button type="submit" disabled={isLoading} className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/20 transition-all transform active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70">
-                    {isLoading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
-                    {mode === 'login' ? 'Login' : mode === 'sign-up' ? 'Sign Up' : 'Send Code'}
-                </button>
-            </form>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] ml-1">Universal Email</label>
+                  <div className="relative group">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" size={20} />
+                    <input 
+                      type="email" 
+                      value={email} 
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="name@gmail.com"
+                      className="w-full pl-12 pr-4 py-5 bg-white dark:bg-[#0a0a0f] border border-gray-200 dark:border-white/5 rounded-[1.2rem] outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-bold text-sm"
+                      required
+                    />
+                  </div>
+                </div>
 
-            {/* Toggle Mode */}
-            <div className="mt-8 text-center text-sm text-gray-600 dark:text-gray-400">
-                {mode === 'login' 
-                    ? "Don't have an account? " 
-                    : mode === 'forgot'
-                        ? "Remember your password? "
-                        : "Already have an account? "}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] ml-1">Secure Passkey</label>
+                  <div className="relative group">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" size={20} />
+                    <input 
+                      type={showPassword ? "text" : "password"} 
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••••••"
+                      className="w-full pl-12 pr-12 py-5 bg-white dark:bg-[#0a0a0f] border border-gray-200 dark:border-white/5 rounded-[1.2rem] outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-bold text-sm"
+                      required
+                    />
+                    <button 
+                      type="button" 
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 transition-colors"
+                    >
+                      {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
+                  </div>
+                  
+                  {mode === 'sign-up' && password && (
+                    <div className="px-1 pt-3 animate-in fade-in duration-500">
+                      <div className="flex justify-between items-center mb-3">
+                         <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Entropy Strength: <span className={strength.score >= 3 ? 'text-emerald-500' : 'text-orange-500'}>{strength.label}</span></span>
+                      </div>
+                      <div className="flex gap-1.5 h-1.5">
+                        {[1,2,3,4].map(i => (
+                          <div key={i} className={`flex-1 rounded-full transition-all duration-700 ${strength.score >= i ? strength.color : 'bg-gray-100 dark:bg-white/5'}`} />
+                        ))}
+                      </div>
+                      <p className="text-[9px] text-gray-400 mt-3 font-medium opacity-70 italic">* Recommended: 10+ characters, 1 uppercase, 1 symbol.</p>
+                    </div>
+                  )}
+                </div>
+
+                {mode === 'sign-up' && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] ml-1">Confirm Passkey</label>
+                    <div className="relative group">
+                      <ShieldCheck className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${password && confirmPassword ? (password === confirmPassword ? 'text-emerald-500' : 'text-red-500') : 'text-gray-400'}`} size={20} />
+                      <input 
+                        type={showPassword ? "text" : "password"} 
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="••••••••••••"
+                        className={`w-full pl-12 pr-4 py-5 bg-white dark:bg-[#0a0a0f] border rounded-[1.2rem] outline-none focus:ring-4 transition-all font-bold text-sm ${
+                            password && confirmPassword 
+                            ? (password === confirmPassword 
+                                ? 'border-emerald-500 focus:ring-emerald-500/10' 
+                                : 'border-red-500 focus:ring-red-500/10') 
+                            : 'border-gray-200 dark:border-white/5 focus:ring-blue-500/10 focus:border-blue-500'
+                        }`}
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <button 
-                    onClick={() => { 
-                        if(mode === 'forgot') setMode('login');
-                        else setMode(mode === 'login' ? 'sign-up' : 'login'); 
-                        setError(''); 
-                    }} 
-                    className="font-bold text-indigo-600 hover:underline"
+                  type="submit" 
+                  disabled={isLoading}
+                  className="w-full py-5.5 mt-4 bg-blue-600 hover:bg-blue-700 text-white rounded-[1.5rem] font-black uppercase tracking-[0.2em] text-xs shadow-2xl shadow-blue-500/30 transition-all flex items-center justify-center gap-4 active:scale-[0.98] disabled:opacity-50"
                 >
-                    {mode === 'login' ? 'Sign Up' : 'Login'}
+                  {isLoading ? (
+                    <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <span>{mode === 'login' ? 'Authorize Access' : 'Create Intelligence Profile'}</span>
+                      <ArrowRight size={20} strokeWidth={3} />
+                    </>
+                  )}
                 </button>
+
+                <div className="pt-10 text-center border-t border-gray-100 dark:border-white/5">
+                   <p className="text-sm font-medium text-gray-500">
+                     {mode === 'login' ? "Unauthorized user?" : "Existing operative?"}
+                     <button 
+                        type="button"
+                        onClick={() => { setMode(mode === 'login' ? 'sign-up' : 'login'); setError(null); }}
+                        className="ml-2 text-blue-600 font-black uppercase tracking-widest text-[11px] hover:underline"
+                     >
+                       {mode === 'login' ? 'Register Account' : 'Authenticate Identity'}
+                     </button>
+                   </p>
+                </div>
+              </form>
+            </>
+          )}
+
+          <div className="mt-16 text-center">
+            <div className="flex items-center justify-center gap-2 mb-2">
+                <Sparkles size={12} className="text-blue-500" />
+                <span className="text-[10px] font-black uppercase tracking-[0.5em] text-gray-300 dark:text-gray-800">Pak Chat</span>
             </div>
+          </div>
         </div>
       </div>
     </div>

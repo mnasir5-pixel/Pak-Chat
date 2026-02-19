@@ -1,7 +1,7 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { ChatConfig } from '../types';
+import { X } from 'lucide-react';
 
 interface ConfigureChatModalProps {
   isOpen: boolean;
@@ -25,121 +25,89 @@ export const ConfigureChatModal: React.FC<ConfigureChatModalProps> = ({ isOpen, 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/50 backdrop-blur-md p-4 animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-[#101018] rounded-[2.5rem] w-full max-w-xl shadow-2xl overflow-hidden flex flex-col border border-white/10 relative">
         
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
-          <h2 className="text-xl font-bold text-gray-800 dark:text-white">Configure Chat</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+        <div className="px-8 py-6 flex justify-between items-center border-b border-gray-50 dark:border-white/5">
+          <h2 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tighter">Configure Chat</h2>
+          <button onClick={onClose} className="p-2 bg-gray-50 dark:bg-white/5 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-all active:scale-90">
+            <X size={20} />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-6 overflow-y-auto">
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-            Customize how Pak Chat responds to you. These settings apply to future messages in this session.
+        <div className="px-8 py-6 overflow-y-auto no-scrollbar">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-8 leading-relaxed font-medium">
+            Notebooks can be customized to help you achieve different goals: do research, help learn, show various perspectives, or converse in a particular style and tone.
           </p>
 
-          {/* Style Section */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-              Conversational Style
+          {/* Goal Section */}
+          <div className="mb-10">
+            <label className="block text-[9px] font-black uppercase text-gray-400 tracking-[0.2em] mb-4">
+              Define your conversational goal, style, or role
             </label>
-            <div className="grid grid-cols-3 gap-3">
-              <button 
-                onClick={() => setLocalConfig({...localConfig, style: 'default'})}
-                className={`px-3 py-2 rounded-xl text-sm font-medium border transition-all ${
-                  localConfig.style === 'default' 
-                  ? 'bg-blue-600 text-white border-blue-600 shadow-md' 
-                  : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
-                }`}
-              >
-                Default
-              </button>
-              <button 
-                onClick={() => setLocalConfig({...localConfig, style: 'learning'})}
-                className={`px-3 py-2 rounded-xl text-sm font-medium border transition-all ${
-                  localConfig.style === 'learning' 
-                  ? 'bg-blue-600 text-white border-blue-600 shadow-md' 
-                  : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
-                }`}
-              >
-                Learning
-              </button>
-              <button 
-                onClick={() => setLocalConfig({...localConfig, style: 'custom'})}
-                className={`px-3 py-2 rounded-xl text-sm font-medium border transition-all ${
-                  localConfig.style === 'custom' 
-                  ? 'bg-blue-600 text-white border-blue-600 shadow-md' 
-                  : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
-                }`}
-              >
-                Custom
-              </button>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: 'default', label: 'Default' },
+                { id: 'learning', label: 'Learning Guide' },
+                { id: 'custom', label: 'Custom' }
+              ].map(goal => (
+                <button 
+                  key={goal.id}
+                  onClick={() => setLocalConfig({...localConfig, style: goal.id as any})}
+                  className={`px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all border-2 ${
+                    localConfig.style === goal.id 
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-500/20' 
+                    : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border-gray-100 dark:border-white/5 hover:border-blue-500/50'
+                  }`}
+                >
+                  {localConfig.style === goal.id && <span className="mr-2">✓</span>}
+                  {goal.label}
+                </button>
+              ))}
             </div>
-            <p className="text-xs text-gray-400 mt-2 h-4">
-              {localConfig.style === 'default' && "Balanced and helpful responses."}
-              {localConfig.style === 'learning' && "Explains concepts like a tutor."}
-              {localConfig.style === 'custom' && "Uses your custom memory instructions."}
+            <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-4 font-bold italic h-4 px-1">
+              {localConfig.style === 'default' && "Best for general purpose research and brainstorming tasks."}
+              {localConfig.style === 'learning' && "Explains concepts like a professional tutor and curriculum guide."}
+              {localConfig.style === 'custom' && "Uses your custom behavior rules and long-term memory."}
             </p>
           </div>
 
           {/* Length Section */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-              Response Length
+          <div className="mb-4">
+            <label className="block text-[9px] font-black uppercase text-gray-400 tracking-[0.2em] mb-4">
+              Choose your response length
             </label>
-            <div className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-xl p-1">
-              <button 
-                onClick={() => setLocalConfig({...localConfig, length: 'short'})}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
-                  localConfig.length === 'short' 
-                  ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm' 
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                }`}
-              >
-                Shorter
-              </button>
-              <button 
-                onClick={() => setLocalConfig({...localConfig, length: 'default'})}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
-                  localConfig.length === 'default' 
-                  ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm' 
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                }`}
-              >
-                Default
-              </button>
-              <button 
-                onClick={() => setLocalConfig({...localConfig, length: 'long'})}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
-                  localConfig.length === 'long' 
-                  ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm' 
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                }`}
-              >
-                Longer
-              </button>
+            <div className="flex flex-wrap gap-2">
+               {[
+                { id: 'default', label: 'Default' },
+                { id: 'long', label: 'Longer' },
+                { id: 'short', label: 'Shorter' }
+              ].map(len => (
+                <button 
+                  key={len.id}
+                  onClick={() => setLocalConfig({...localConfig, length: len.id as any})}
+                  className={`px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all border-2 ${
+                    localConfig.length === len.id 
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-500/20' 
+                    : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border-gray-100 dark:border-white/5 hover:border-blue-500/50'
+                  }`}
+                >
+                  {localConfig.length === len.id && <span className="mr-2">✓</span>}
+                  {len.label}
+                </button>
+              ))}
             </div>
           </div>
 
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex justify-end gap-3">
-          <button 
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            Cancel
-          </button>
+        <div className="p-6 border-t border-gray-50 dark:border-white/5 flex justify-end">
           <button 
             onClick={handleSave}
-            className="px-6 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition-colors"
+            className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-black uppercase tracking-widest text-[10px] shadow-xl shadow-blue-500/40 transition-all active:scale-95"
           >
             Save Changes
           </button>

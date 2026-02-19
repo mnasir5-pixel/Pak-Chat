@@ -1,6 +1,27 @@
-
 import React, { useState } from 'react';
 import { ChatService } from '../services/geminiService';
+
+interface DictionaryData {
+  english: {
+    definition: string;
+    type: string;
+    grammar: string;
+    translation: string;
+  };
+  urdu: {
+    definition: string;
+    type: string;
+    grammar: string;
+    translation: string;
+  };
+  chinese: {
+    definition: string;
+    type: string;
+    grammar: string;
+    pinyin?: string;
+    translation: string;
+  };
+}
 
 interface DictionaryModalProps {
   isOpen: boolean;
@@ -9,7 +30,7 @@ interface DictionaryModalProps {
 
 export const DictionaryModal: React.FC<DictionaryModalProps> = ({ isOpen, onClose }) => {
   const [inputText, setInputText] = useState('');
-  const [result, setResult] = useState<string | null>(null);
+  const [data, setData] = useState<DictionaryData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   if (!isOpen) return null;
@@ -18,107 +39,148 @@ export const DictionaryModal: React.FC<DictionaryModalProps> = ({ isOpen, onClos
     if (!inputText.trim()) return;
     
     setIsLoading(true);
-    setResult(null);
+    setData(null);
 
-    const prompt = `Translate the following text into 3 distinct languages: English, Urdu, and Chinese (Simplified).
+    const prompt = `Act as a professional polyglot linguist. Analyze the following word, phrase, or sentence: "${inputText}"
+    Provide accurate translations and linguistic details for English, Urdu, and Mandarin Chinese.
     
-    Input Text: "${inputText}"
-
-    OUTPUT FORMAT (Strictly follow this):
+    Return ONLY a valid JSON object with this exact structure:
+    {
+      "english": { "translation": "string", "definition": "string", "type": "string", "grammar": "string" },
+      "urdu": { "translation": "string", "definition": "string", "type": "string", "grammar": "string" },
+      "chinese": { "translation": "string", "definition": "string", "type": "string", "grammar": "string", "pinyin": "string" }
+    }
     
-    **English:**
-    [Translation]
-
-    **Urdu:**
-    [Translation]
-
-    **Chinese:**
-    [Translation]
-    `;
+    Rules:
+    1. If the input is a sentence, the "translation" should be the direct translation, and "definition" should explain the context or theme.
+    2. Urdu "type" should use traditional terms (e.g., Ism, Fail).
+    3. Chinese section MUST include accurate Pinyin for characters.
+    4. Provide the result in the requested JSON format only.`;
 
     try {
-      // Create a temporary service instance for this one-off task
-      const service = new ChatService("You are a strict and accurate multi-language translator.");
+      const service = new ChatService("You are a professional dictionary and translation API. Output valid JSON only.");
       const stream = await service.sendMessageStream(prompt);
       
       let fullText = '';
       for await (const chunk of stream) {
         fullText += chunk;
-        setResult(fullText);
+      }
+
+      const jsonMatch = fullText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          setData(parsed);
       }
     } catch (e) {
-      setResult("Error: Could not perform translation. Please check your connection.");
+      console.error("Dictionary Error:", e);
+      alert("Linguistic analysis failed. Please try a different query.");
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-white dark:bg-slate-950 p-0 sm:p-4 animate-in fade-in duration-300">
+      <div className="bg-white dark:bg-slate-950 w-full max-w-2xl h-full sm:h-auto sm:max-h-[90vh] flex flex-col overflow-hidden">
         
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-indigo-50 dark:bg-indigo-900/20">
-          <div className="flex items-center gap-2">
-             <span className="text-2xl">📖</span>
-             <h2 className="text-xl font-bold text-gray-800 dark:text-white">Dictionary & Translator</h2>
+        {/* Minimalist Header */}
+        <div className="px-8 py-6 flex justify-between items-center border-b border-slate-50 dark:border-slate-900">
+          <div className="flex items-center gap-3">
+             <h2 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight uppercase">Smart Lexicon</h2>
+             <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
 
-        {/* Body */}
-        <div className="p-6 overflow-y-auto flex-1">
-           <div className="mb-4">
-              <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Enter Word or Sentence</label>
-              <div className="relative">
-                  <textarea 
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    placeholder="Type anything (e.g., 'Hello', 'How are you?')..."
-                    className="w-full p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none text-gray-800 dark:text-gray-100 h-28"
-                    onKeyDown={(e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleTranslate(); } }}
-                  />
-                  <button 
-                    onClick={handleTranslate}
-                    disabled={isLoading || !inputText.trim()}
-                    className="absolute bottom-3 right-3 p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-50 transition-colors shadow-sm"
-                    title="Translate"
-                  >
-                    {isLoading ? (
-                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" /></svg>
-                    )}
-                  </button>
-              </div>
+        {/* Professional Search Input */}
+        <div className="px-8 py-6">
+           <div className="relative group">
+               <input 
+                 type="text"
+                 value={inputText}
+                 onChange={(e) => setInputText(e.target.value)}
+                 placeholder="Search word, phrase or sentence..."
+                 className="w-full bg-transparent border-b-2 border-slate-100 dark:border-slate-800 py-4 text-2xl font-medium outline-none focus:border-indigo-500 transition-all text-slate-900 dark:text-white placeholder-slate-200 dark:placeholder-slate-800"
+                 onKeyDown={(e) => { if(e.key === 'Enter') handleTranslate(); }}
+                 autoFocus
+               />
+               <button 
+                 onClick={handleTranslate}
+                 disabled={isLoading || !inputText.trim()}
+                 className="absolute right-0 bottom-4 text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-widest text-xs hover:text-indigo-800 disabled:opacity-30 transition-all"
+               >
+                 {isLoading ? 'Analysing...' : 'Analyse'}
+               </button>
            </div>
+        </div>
 
-           {/* Results Area */}
-           {(result || isLoading) && (
-               <div className="bg-gray-50 dark:bg-gray-900/50 rounded-xl p-5 border border-gray-100 dark:border-gray-700">
-                   {result ? (
-                       <div className="prose prose-sm dark:prose-invert max-w-none">
-                           {/* Simple parser to make headings pop */}
-                           {result.split('\n').map((line, idx) => {
-                               if (line.includes('English:') || line.includes('Urdu:') || line.includes('Chinese:')) {
-                                   return <h4 key={idx} className="text-indigo-600 dark:text-indigo-400 font-bold mt-3 mb-1 text-base">{line.replace(/\*\*/g, '')}</h4>;
-                               }
-                               return <p key={idx} className="text-gray-700 dark:text-gray-300 my-1 leading-relaxed text-lg">{line}</p>;
-                           })}
+        {/* Results Area */}
+        <div className="px-8 pb-10 overflow-y-auto flex-1 scrollbar-hide">
+           {data ? (
+               <div className="space-y-12 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                   
+                   {/* English Section */}
+                   <div className="relative">
+                       <span className="text-[10px] font-black text-slate-300 dark:text-slate-700 uppercase tracking-[0.3em] block mb-4">English Analysis</span>
+                       <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-2">{data.english.translation}</h3>
+                       <div className="flex items-baseline gap-4 mb-2">
+                           <span className="text-sm font-bold text-indigo-500 dark:text-indigo-400 italic">{data.english.type}</span>
+                           <span className="text-[11px] text-slate-400 font-medium uppercase tracking-wider">{data.english.grammar}</span>
                        </div>
-                   ) : (
-                       <div className="flex flex-col items-center justify-center py-8 text-gray-400">
-                           <div className="w-8 h-8 border-2 border-indigo-200 border-t-indigo-500 rounded-full animate-spin mb-2"></div>
-                           <span className="text-xs">Translating...</span>
+                       <p className="text-base text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
+                           {data.english.definition}
+                       </p>
+                   </div>
+
+                   {/* Urdu Section */}
+                   <div className="text-right" dir="rtl">
+                       <span className="text-[10px] font-black text-slate-300 dark:text-slate-700 uppercase tracking-[0.3em] block mb-4" dir="ltr">اردو تجزیہ (Urdu Analysis)</span>
+                       <h3 className="text-4xl font-black text-emerald-800 dark:text-emerald-400 mb-4 font-serif leading-tight">{data.urdu.translation}</h3>
+                       <div className="flex items-baseline gap-4 mb-2">
+                           <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">{data.urdu.type}</span>
+                           <span className="text-xs text-slate-400 font-medium">{data.urdu.grammar}</span>
                        </div>
-                   )}
+                       <p className="text-2xl text-slate-700 dark:text-slate-300 leading-[1.6] font-serif">
+                           {data.urdu.definition}
+                       </p>
+                   </div>
+
+                   {/* Chinese Section */}
+                   <div>
+                       <span className="text-[10px] font-black text-slate-300 dark:text-slate-700 uppercase tracking-[0.3em] block mb-4">Chinese Analysis</span>
+                       <h3 className="text-5xl font-black text-rose-600 dark:text-rose-500 mb-2">{data.chinese.translation}</h3>
+                       <div className="flex items-center gap-4 mb-3">
+                           <span className="text-sm font-bold text-rose-500 dark:text-rose-400">{data.chinese.type}</span>
+                           {data.chinese.pinyin && <span className="text-base font-black text-blue-500 font-mono tracking-tight">{data.chinese.pinyin}</span>}
+                           <span className="text-[11px] text-slate-400 font-medium uppercase tracking-wider">• {data.chinese.grammar}</span>
+                       </div>
+                       <p className="text-base text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
+                           {data.chinese.definition}
+                       </p>
+                   </div>
+
+               </div>
+           ) : isLoading ? (
+               <div className="flex items-center gap-4 py-10 opacity-50 justify-center">
+                  <div className="w-4 h-4 bg-indigo-500 rounded-full animate-bounce"></div>
+                  <div className="w-4 h-4 bg-indigo-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                  <div className="w-4 h-4 bg-indigo-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+               </div>
+           ) : (
+               <div className="py-20 text-center">
+                  <p className="text-slate-200 dark:text-slate-800 text-sm font-black uppercase tracking-[0.5em]">Awaiting Transmission</p>
                </div>
            )}
         </div>
+        
+        {/* Seamless Footer */}
+        {data && (
+            <div className="px-8 py-6 border-t border-slate-50 dark:border-slate-900 text-[10px] text-slate-300 dark:text-slate-700 font-black uppercase tracking-[0.4em] text-center">
+                Multi-Modal Semantic Engine Active
+            </div>
+        )}
       </div>
     </div>
   );

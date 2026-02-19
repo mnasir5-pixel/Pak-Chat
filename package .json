@@ -1,8 +1,7 @@
-
 {
-  "name": "pak-chat",
+  "name": "copy-of-pak-chat-05-p1",
   "private": true,
-  "version": "1.0.0",
+  "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,15 +11,7 @@
   "dependencies": {
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "@google/genai": "^1.30.0",
-    "vite": "^7.2.6",
-    "@vitejs/plugin-react": "^5.1.1",
-    "path": "^0.12.7",
-    "lucide-react": "^0.562.0",
-    "jspdf": "^2.5.1",
-    "docx": "^9.1.1",
-    "pptxgenjs": "^3.12.0",
-    "file-saver": "^2.0.5"
+    "@google/genai": "^1.30.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
