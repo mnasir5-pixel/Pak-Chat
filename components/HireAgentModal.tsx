@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Languages, Globe, User, Plus, Sparkles, Shield, UserCheck, MessageSquare, GraduationCap } from 'lucide-react';
+import { X, Languages, Globe, User, Plus, Sparkles, Shield, UserCheck, MessageSquare, GraduationCap, BarChart } from 'lucide-react';
 import { Tutor } from '../types';
 
 interface HireAgentModalProps {
@@ -23,6 +23,7 @@ export const HireAgentModal: React.FC<HireAgentModalProps> = ({ isOpen, onClose,
   const [language, setLanguage] = useState('English');
   const [role, setRole] = useState<'agent' | 'assistant'>('agent');
   const [icon, setIcon] = useState('👤');
+  const [priority, setPriority] = useState<'High' | 'Medium' | 'Low'>('Medium');
   const [isAddingNewLang, setIsAddingNewLang] = useState(false);
   const [newLangInput, setNewLangInput] = useState('');
 
@@ -33,8 +34,10 @@ export const HireAgentModal: React.FC<HireAgentModalProps> = ({ isOpen, onClose,
       setLanguage(editingAgent.targetLanguage);
       setRole(editingAgent.role || 'agent');
       setIcon(editingAgent.icon || '👤');
-      setIsAddingNewLang(!DEFAULT_LANGUAGES.includes(editingAgent.targetLanguage));
-      if (!DEFAULT_LANGUAGES.includes(editingAgent.targetLanguage)) {
+      setPriority(editingAgent.priority || 'Medium');
+      const isCustom = !DEFAULT_LANGUAGES.includes(editingAgent.targetLanguage);
+      setIsAddingNewLang(isCustom);
+      if (isCustom) {
           setNewLangInput(editingAgent.targetLanguage);
       }
     } else {
@@ -43,6 +46,7 @@ export const HireAgentModal: React.FC<HireAgentModalProps> = ({ isOpen, onClose,
       setLanguage('English');
       setRole('agent');
       setIcon('👤');
+      setPriority('Medium');
       setIsAddingNewLang(false);
       setNewLangInput('');
     }
@@ -53,7 +57,8 @@ export const HireAgentModal: React.FC<HireAgentModalProps> = ({ isOpen, onClose,
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const finalLanguage = isAddingNewLang ? newLangInput : language;
-    onSave({ name, description, targetLanguage: finalLanguage, role, icon });
+    if (isAddingNewLang && !newLangInput.trim()) return;
+    onSave({ name, description, targetLanguage: finalLanguage, role, icon, priority });
     onClose();
   };
 
@@ -102,6 +107,26 @@ export const HireAgentModal: React.FC<HireAgentModalProps> = ({ isOpen, onClose,
                             className={`p-3 rounded-xl border-2 transition-all ${icon === i ? 'bg-teal-600 border-teal-500 shadow-lg' : 'bg-gray-50 dark:bg-black border-transparent grayscale opacity-50 hover:opacity-100 hover:grayscale-0'}`}
                         >
                             <span className="text-xl">{i}</span>
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] ml-1">Priority Level</label>
+                <div className="flex items-center gap-2">
+                    {(['High', 'Medium', 'Low'] as const).map((p) => (
+                        <button
+                            key={p}
+                            type="button"
+                            onClick={() => setPriority(p)}
+                            className={`flex-1 py-3 rounded-xl border-2 text-[10px] font-black uppercase tracking-widest transition-all ${
+                                priority === p 
+                                ? 'bg-orange-600 border-orange-500 text-white shadow-lg' 
+                                : 'bg-gray-50 dark:bg-black border-transparent text-gray-400 hover:border-gray-200'
+                            }`}
+                        >
+                            {p}
                         </button>
                     ))}
                 </div>
@@ -161,7 +186,35 @@ export const HireAgentModal: React.FC<HireAgentModalProps> = ({ isOpen, onClose,
                         {lang}
                     </button>
                 ))}
+                <button
+                    type="button"
+                    onClick={() => { setIsAddingNewLang(true); }}
+                    className={`py-2 px-2 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border ${
+                        isAddingNewLang 
+                        ? 'bg-teal-50 dark:bg-teal-900/30 border-teal-500 text-teal-600' 
+                        : 'bg-gray-50 dark:bg-black border-transparent text-gray-500 hover:border-gray-300'
+                    }`}
+                >
+                    and other
+                </button>
             </div>
+
+            {isAddingNewLang && (
+                <div className="mt-4 p-4 bg-gray-50 dark:bg-black border border-gray-100 dark:border-white/5 rounded-2xl animate-in slide-in-from-top-2">
+                    <div className="flex items-center gap-3 mb-2 px-1">
+                        <MessageSquare size={14} className="text-teal-500" />
+                        <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Enter custom language</span>
+                    </div>
+                    <input 
+                        type="text" 
+                        value={newLangInput} 
+                        onChange={(e) => setNewLangInput(e.target.value)}
+                        placeholder="Type language here..."
+                        className="w-full p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 transition-all text-sm font-bold text-teal-600"
+                        autoFocus
+                    />
+                </div>
+            )}
           </div>
         </form>
 

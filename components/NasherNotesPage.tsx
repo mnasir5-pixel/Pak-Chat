@@ -34,12 +34,6 @@ interface NasherNotesPageProps {
   onBack: () => void;
   onStartLive: () => void;
   onNavigateToGeneralChat?: () => void;
-  onTranslate?: (id: string, targetLang: string) => void;
-  onReadAloud?: (id: string) => void;
-  onAudioOverview?: (id: string) => void;
-  onMindMap?: (id: string) => void;
-  onShare?: (id: string) => void;
-  isLiveActive?: boolean;
 }
 
 const getBaseSystemPrompt = (language: string) => `You are "NotesLM Assistant". 
@@ -56,7 +50,7 @@ At the end of EVERY reply, you MUST provide 3 follow-up hints (questions the use
 
 const stripMarkdown = (text: string) => {
   return text
-    .replace(/[*#$~`]+/g, '')
+    .replace(/[*_#$~`]+/g, '')
     .trim();
 };
 
@@ -69,8 +63,8 @@ const ExportFormatModal: React.FC<{
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-md p-0 sm:p-4 animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-[#101018] rounded-t-[2.5rem] sm:rounded-[2.5rem] w-full max-w-sm p-8 shadow-2xl border-t sm:border border-white/10 overflow-hidden relative animate-in slide-in-from-bottom duration-300">
+    <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-[#101018] rounded-[2.5rem] w-full max-w-sm p-8 shadow-2xl border border-white/10 overflow-hidden relative">
         <div className="flex justify-between items-center mb-8">
           <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tighter">Export Format</h3>
           <button onClick={onClose} className="p-2 text-gray-400 hover:text-red-500 transition-colors">
@@ -132,9 +126,6 @@ const QuizViewer: React.FC<{ asset: Asset; onExit: () => void; onRegenerate: () 
     const isLast = currentIndex === questions.length - 1;
     const q = questions[currentIndex];
 
-    // Safety guard for missing question object
-    if (!q) return null;
-
     return (
         <div className="h-full w-full bg-[#f8fafc] dark:bg-[#050508] flex flex-col items-center justify-center p-4 sm:p-6 animate-in fade-in duration-500">
             <div className="absolute top-4 left-4 sm:top-8 sm:left-8 flex items-center gap-4">
@@ -191,14 +182,14 @@ const QuizViewer: React.FC<{ asset: Asset; onExit: () => void; onRegenerate: () 
                     {showResult && (
                         <div className="mt-8 sm:mt-12 flex justify-end animate-in fade-in zoom-in duration-300">
                             {!isLast ? (
-                                <button onClick={nextQuestion} className="w-full sm:w-auto flex items-center justify-center gap-3 px-8 sm:px-10 py-4 sm:py-5 bg-blue-600 text-white rounded-[1.5rem] sm:rounded-[2rem] font-black uppercase tracking-widest shadow-xl shadow-blue-500/30 hover:scale-105 active:scale-[0.98] transition-all">
+                                <button onClick={nextQuestion} className="w-full sm:w-auto flex items-center justify-center gap-3 px-8 sm:px-10 py-4 sm:py-5 bg-blue-600 text-white rounded-[1.5rem] sm:rounded-[2rem] font-black uppercase tracking-widest shadow-xl shadow-blue-500/30 hover:scale-105 active:scale-95 transition-all">
                                     Next Question <ChevronRight size={20} />
                                 </button>
                             ) : (
                                 <div className="text-center w-full">
                                     <p className="text-[10px] font-black uppercase text-gray-400 tracking-[0.3em] mb-4">Quiz Completed</p>
                                     <h4 className="text-2xl sm:text-4xl font-black text-gray-900 dark:text-white mb-6 sm:mb-8">Score: {score} / {questions.length}</h4>
-                                    <button onClick={onExit} className="w-full sm:w-auto px-10 sm:px-12 py-4 sm:py-5 bg-black dark:bg-white text-white dark:text-black rounded-[1.5rem] sm:rounded-[2rem] font-black uppercase tracking-widest shadow-xl hover:scale-105 active:scale-[0.98] transition-all">Exit Review</button>
+                                    <button onClick={onExit} className="w-full sm:w-auto px-10 sm:px-12 py-4 sm:py-5 bg-black dark:bg-white text-white dark:text-black rounded-[1.5rem] sm:rounded-[2rem] font-black uppercase tracking-widest shadow-xl hover:scale-105 active:scale-95 transition-all">Exit Review</button>
                                 </div>
                             )}
                         </div>
@@ -321,7 +312,7 @@ const SlidesViewer: React.FC<{ asset: Asset; onExit: () => void }> = ({ asset, o
                     <button 
                         onClick={prev} 
                         disabled={currentIndex === 0} 
-                        className="p-2 sm:p-4 bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-white/10 text-gray-800 dark:text-white rounded-full transition-all disabled:opacity-20 disabled:pointer-events-none shadow-sm active:scale-[0.9] overflow-hidden"
+                        className="p-2 sm:p-4 bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-white/10 text-gray-800 dark:text-white rounded-full transition-all disabled:opacity-20 disabled:pointer-events-none shadow-sm active:scale-90"
                     >
                         <ChevronLeft size={20} strokeWidth={3} />
                     </button>
@@ -335,7 +326,7 @@ const SlidesViewer: React.FC<{ asset: Asset; onExit: () => void }> = ({ asset, o
                     <button 
                         onClick={next} 
                         disabled={currentIndex === slides.length - 1} 
-                        className="p-2 sm:p-4 bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-all disabled:opacity-20 disabled:pointer-events-none shadow-xl shadow-blue-500/30 active:scale-[0.9] overflow-hidden"
+                        className="p-2 sm:p-4 bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-all disabled:opacity-20 disabled:pointer-events-none shadow-xl shadow-blue-500/30 active:scale-90"
                     >
                         <ChevronRight size={20} strokeWidth={3} />
                     </button>
@@ -449,7 +440,7 @@ const AudioOverviewViewer: React.FC<{ asset: Asset; onExit: () => void; onDownlo
                 <div className="flex flex-col items-center gap-4 sm:gap-6">
                     <button 
                         onClick={togglePlay}
-                        className="w-16 h-16 sm:w-20 sm:h-20 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 active:scale-[0.95] transition-all shadow-xl"
+                        className="w-16 h-16 sm:w-20 sm:h-20 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 active:scale-95 transition-all shadow-xl"
                     >
                         {isPlaying ? <Pause size={24} className="sm:w-8 sm:h-8" fill="currentColor" /> : <Play size={24} className="sm:w-8 sm:h-8 ml-1" fill="currentColor" />}
                     </button>
@@ -470,7 +461,7 @@ const VideoOverviewViewer: React.FC<{ asset: Asset; onExit: () => void; onDownlo
        <div className="w-full max-w-5xl aspect-video bg-[#101018] rounded-[1.5rem] sm:rounded-[2.5rem] border border-white/10 overflow-hidden shadow-2xl relative group">
           <video src={asset.content} className="w-full h-full object-contain" controls autoPlay />
           <div className="absolute top-4 right-4 sm:top-6 sm:right-6 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-             <button onClick={onDownload} className="p-3 sm:p-4 bg-blue-600 text-white rounded-full shadow-xl hover:scale-110 active:scale-[0.95] transition-all"><Download size={20}/></button>
+             <button onClick={onDownload} className="p-3 sm:p-4 bg-blue-600 text-white rounded-full shadow-xl hover:scale-110 active:scale-95 transition-all"><Download size={20}/></button>
           </div>
        </div>
        <div className="mt-6 sm:mt-10 text-center">
@@ -525,14 +516,14 @@ const FlashcardDeck: React.FC<{ content: string; onClose: () => void }> = ({ con
           <div className="absolute inset-0 bg-[#101018] border border-blue-500/30 rounded-[1.5rem] sm:rounded-[2.5rem] flex flex-col items-center justify-center p-6 sm:p-10 text-center backface-hidden rotate-y-180 shadow-2xl">
              <span className="text-[9px] sm:text-[10px] font-black uppercase text-emerald-500 tracking-[0.4em] mb-4 sm:mb-6">Answer</span>
              <p className="text-base sm:text-xl font-medium text-gray-200">{cards[currentIndex].back}</p>
-             <div className="mt-8 sm:mt-12 text-gray-500 text-[9px] font-black uppercase tracking-widest">Tap to flip back</div>
+             <div className="mt-8 sm:mt-12 text-gray-500 text-[9px] sm:text-[10px] font-black uppercase tracking-widest">Tap to flip back</div>
           </div>
         </div>
         <div className="absolute top-1/2 -left-4 sm:-left-20 -translate-y-1/2">
-           <button onClick={prev} className="p-3 sm:p-4 bg-white/5 hover:bg-white/10 rounded-full text-white transition-all active:scale-[0.8]"><ChevronLeft size={24} className="sm:w-8 sm:h-8" /></button>
+           <button onClick={prev} className="p-3 sm:p-4 bg-white/5 hover:bg-white/10 rounded-full text-white transition-all"><ChevronLeft size={24} className="sm:w-8 sm:h-8" /></button>
         </div>
         <div className="absolute top-1/2 -right-4 sm:-right-20 -translate-y-1/2">
-           <button onClick={next} className="p-3 sm:p-4 bg-white/5 hover:bg-white/10 rounded-full text-white transition-all active:scale-[0.8]"><ChevronRight size={24} className="sm:w-8 sm:h-8" /></button>
+           <button onClick={next} className="p-3 sm:p-4 bg-white/5 hover:bg-white/10 rounded-full text-white transition-all"><ChevronRight size={24} className="sm:w-8 sm:h-8" /></button>
         </div>
       </div>
       <div className="mt-8 sm:mt-12 flex items-center gap-6">
@@ -717,7 +708,7 @@ const MindMapCanvas: React.FC<MindMapCanvasProps> = ({ content, onExit, onNodeCl
                    <button onClick={handleAutoFit} className="p-2 text-gray-400 hover:text-indigo-600 transition-colors" title="Fit to Screen"><RefreshCcw size={16}/></button>
                 </div>
                 <div className="pointer-events-auto flex gap-2">
-                    <button onClick={onExit} className="flex items-center gap-2 px-4 sm:px-8 py-2 sm:py-3.5 bg-black dark:bg-white text-white dark:text-black rounded-full text-[9px] sm:text-[11px] font-black uppercase tracking-[0.2em] shadow-2xl active:scale-[0.95] overflow-hidden"><X size={16}/> <span className="hidden sm:inline">Close</span></button>
+                    <button onClick={onExit} className="flex items-center gap-2 px-4 sm:px-8 py-2 sm:py-3.5 bg-black dark:bg-white text-white dark:text-black rounded-full text-[9px] sm:text-[11px] font-black uppercase tracking-[0.2em] shadow-2xl active:scale-95"><X size={16}/> <span className="hidden sm:inline">Close</span></button>
                 </div>
             </div>
 
@@ -796,7 +787,7 @@ const InfographicView: React.FC<{ url: string; name: string; onExit: () => void 
           <div className="flex items-center gap-2 sm:gap-3">
               <button onClick={handleReset} className="p-2 text-gray-400 hover:text-blue-600 transition-colors" title="Fit to Screen"><RefreshCw size={16}/></button>
               <div className="h-6 w-px bg-gray-100 dark:bg-white/5 mx-1" />
-              <a href={url} download={`${name}.png`} className="p-2 sm:p-3 bg-blue-600 text-white rounded-full shadow-lg hover:scale-110 active:scale-[0.95] transition-all overflow-hidden"><Download size={16}/></a>
+              <a href={url} download={`${name}.png`} className="p-2 sm:p-3 bg-blue-600 text-white rounded-full shadow-lg hover:scale-110 active:scale-95 transition-all"><Download size={16}/></a>
           </div>
       </div>
       <div 
@@ -857,10 +848,7 @@ const ReportDocumentView: React.FC<{ content: string; name: string; onExit: () =
   </div>
 );
 
-export const NasherNotesPage: React.FC<NasherNotesPageProps> = ({ 
-  language, session, onUpdateSession, onBack, onStartLive, onNavigateToGeneralChat,
-  onTranslate, onReadAloud, onAudioOverview, onMindMap, onShare, isLiveActive
-}) => {
+export const NasherNotesPage: React.FC<NasherNotesPageProps> = ({ language, session, onUpdateSession, onBack, onStartLive, onNavigateToGeneralChat }) => {
   const [sources, setSources] = useState<Source[]>(session.sources || []);
   const [messages, setMessages] = useState<ChatMessage[]>(session.messages || []);
   const [assets, setAssets] = useState<Asset[]>(session.assets || []);
@@ -869,9 +857,10 @@ export const NasherNotesPage: React.FC<NasherNotesPageProps> = ({
   
   const [viewingAsset, setViewingAsset] = useState<Asset | null>(null);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
-  const [chatConfig, setChatConfig] = useState<ChatConfig>(session.config || { style: 'default', length: 'default', mode: 'assistant' });
+  const [chatConfig, setChatConfig] = useState<ChatConfig>(session.config || { style: 'default', length: 'default' });
   
   const [configModal, setConfigModal] = useState<{ isOpen: boolean; type: Asset['type'] | null }>({ isOpen: false, type: null });
+  // Fix: changed 'boolean' type name to 'false' value in the initial state object
   const [exportModal, setExportModal] = useState<{ isOpen: boolean; asset: Asset | null }>({ isOpen: false, asset: null });
   
   const [isAddSourceModalOpen, setIsAddSourceModalOpen] = useState(false);
@@ -1046,7 +1035,7 @@ export const NasherNotesPage: React.FC<NasherNotesPageProps> = ({
             const videoUrl = await chatServiceRef.current!.generateVideo(videoPrompt, '16:9');
             setAssets(prev => prev.map(a => a.id === assetId ? { ...a, status: 'ready', content: videoUrl, name: `Video Overview: ${selectedSources[0].name.substring(0, 15)}...` } : a));
         } else if (tool === 'audio') {
-            const scriptPrompt = `Generate a ${audioFormat} narration script (Length: ${audioLength}) for an audio overview in ${selectedLang} because of: ${sourceCtx}. Focus on research insights. Output ONLY raw text.`;
+            const scriptPrompt = `Generate a ${audioFormat} narration script (Length: ${audioLength}) for an audio overview in ${selectedLang} based on: ${sourceCtx}. Focus on research insights. Output ONLY raw text.`;
             const stream = await chatServiceRef.current!.sendMessageStream(scriptPrompt);
             let scriptText = "";
             for await (const chunk of stream) { scriptText += chunk; }
@@ -1295,7 +1284,7 @@ export const NasherNotesPage: React.FC<NasherNotesPageProps> = ({
   };
 
   const StudioButton = ({ icon: Icon, label, id, color }: any) => (
-    <button onClick={() => setConfigModal({ isOpen: true, type: id })} className="flex flex-col items-center justify-center p-2.5 bg-white dark:bg-[#0a0a0e] border border-gray-100 dark:border-white/5 rounded-[1.5rem] hover:border-blue-500 hover:shadow-xl transition-all group active:scale-95 overflow-hidden">
+    <button onClick={() => setConfigModal({ isOpen: true, type: id })} className="flex flex-col items-center justify-center p-2.5 bg-white dark:bg-[#0a0a0e] border border-gray-100 dark:border-white/5 rounded-[1.5rem] hover:border-blue-500 hover:shadow-xl transition-all group active:scale-95">
       <div className={`p-3 rounded-xl mb-2 transition-transform group-hover:scale-110 shadow-sm ${color}`}><Icon size={18} /></div>
       <span className="text-[9px] font-black uppercase tracking-tighter text-gray-500 group-hover:text-blue-500 text-center">{label}</span>
     </button>
@@ -1399,7 +1388,7 @@ export const NasherNotesPage: React.FC<NasherNotesPageProps> = ({
                     <div key={asset.id} onClick={() => asset.status === 'ready' && setViewingAsset(asset)} className={`p-4 bg-white dark:bg-[#0a0a0e] border border-gray-100 dark:border-white/5 rounded-2xl shadow-sm transition-all relative cursor-pointer ${asset.status === 'processing' ? 'animate-pulse ring-1 ring-blue-500/20' : 'hover:border-blue-500 hover:shadow-md'}`}>
                         <div className="flex items-start justify-between">
                             <div className="flex items-center gap-3 min-w-0"><div className={`p-2.5 rounded-xl ${asset.status === 'processing' ? 'bg-amber-50 text-amber-500 dark:bg-amber-900/20' : 'bg-emerald-50 text-emerald-500 dark:bg-emerald-900/20'}`}>{asset.status === 'processing' ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}</div><div className="min-w-0"><p className="text-[11px] font-bold truncate dark:text-white uppercase tracking-tight">{asset.name}</p><p className="text-[8px] text-gray-400 font-black uppercase tracking-widest mt-0.5">{asset.type} • {asset.status}</p></div></div>
-                            {asset.status === 'ready' && <div className="relative"><button onClick={(e) => { e.stopPropagation(); setAssetMenuId(assetMenuId === asset.id ? null : asset.id); }} className="p-1 text-gray-300 hover:text-blue-500 transition-colors"><MoreVertical size={16} /></button>{assetMenuId === asset.id && <div className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-gray-800 border border-gray-100 dark:border-white/10 rounded-xl shadow-2xl z-[100] overflow-hidden p-1"><button onClick={(e) => { e.stopPropagation(); setRenameModal({ isOpen: true, id: asset.id, name: asset.name }); setAssetMenuId(null); }} className="w-full text-left px-3 py-2.5 text-[9px] font-bold uppercase tracking-widest text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 flex items-center gap-2 transition-colors"><Edit2 size={12} /> Rename</button><button onClick={(e) => { e.stopPropagation(); handleExportRequest(asset); setAssetMenuId(null); }} className="w-full text-left px-3 py-2.5 font-bold uppercase tracking-widest text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 flex items-center gap-2 transition-colors"><FileOutput size={12} /> Export</button><div className="h-px bg-gray-100 dark:bg-white/5 my-1" /><button onClick={(e) => { e.stopPropagation(); setAssets(prev => prev.filter(a => a.id !== asset.id)); setAssetMenuId(null); }} className="w-full text-left px-3 py-2.5 font-bold uppercase tracking-widest text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 transition-colors"><Trash2 size={12} /> Wipe</button></div>}</div>}
+                            {asset.status === 'ready' && <div className="relative"><button onClick={(e) => { e.stopPropagation(); setAssetMenuId(assetMenuId === asset.id ? null : asset.id); }} className="p-1 text-gray-300 hover:text-blue-500 transition-colors"><MoreVertical size={16} /></button>{assetMenuId === asset.id && <div className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-gray-800 border border-gray-100 dark:border-white/10 rounded-xl shadow-2xl z-[100] overflow-hidden p-1"><button onClick={(e) => { e.stopPropagation(); setRenameModal({ isOpen: true, id: asset.id, name: asset.name }); setAssetMenuId(null); }} className="w-full text-left px-3 py-2.5 text-[9px] font-bold uppercase tracking-widest text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 flex items-center gap-2 transition-colors"><Edit2 size={12} /> Rename</button><button onClick={(e) => { e.stopPropagation(); handleExportRequest(asset); setAssetMenuId(null); }} className="w-full text-left px-3 py-2.5 text-[9px] font-bold uppercase tracking-widest text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 flex items-center gap-2 transition-colors"><FileOutput size={12} /> Export</button><div className="h-px bg-gray-100 dark:bg-white/5 my-1" /><button onClick={(e) => { e.stopPropagation(); setAssets(prev => prev.filter(a => a.id !== asset.id)); setAssetMenuId(null); }} className="w-full text-left px-3 py-2.5 text-[9px] font-bold uppercase tracking-widest text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 transition-colors"><Trash2 size={12} /> Wipe</button></div>}</div>}
                         </div>
                     </div>
                 ))}
@@ -1444,7 +1433,7 @@ export const NasherNotesPage: React.FC<NasherNotesPageProps> = ({
                     <>
                         <div className="h-14 px-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between shrink-0 bg-gray-50 dark:bg-black/40 backdrop-blur-sm">
                            <div className="flex items-center gap-3">
-                              <button onClick={() => setViewingAsset(null)} className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-white/5 text-gray-600 dark:text-gray-300 rounded-full text-[9px] font-black uppercase tracking-[0.3em] border border-gray-200 dark:border-white/10 hover:bg-blue-600 hover:text-white hover:border-blue-500 transition-all active:scale-[0.95] overflow-hidden"><ArrowLeft size={12} /> Back</button>
+                              <button onClick={() => setViewingAsset(null)} className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-white/5 text-gray-600 dark:text-gray-300 rounded-full text-[9px] font-black uppercase tracking-[0.3em] border border-gray-200 dark:border-white/10 hover:bg-blue-600 hover:text-white hover:border-blue-500 transition-all"><ArrowLeft size={12} /> Back</button>
                               <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-600 truncate max-w-[100px]">{viewingAsset.name}</h2>
                            </div>
                            <button onClick={() => handleExportRequest(viewingAsset)} className="p-2.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all"><DownloadCloud size={18} /></button>
@@ -1461,7 +1450,7 @@ export const NasherNotesPage: React.FC<NasherNotesPageProps> = ({
                              <div className="w-20 h-20 sm:w-28 sm:h-28 bg-blue-50 dark:bg-blue-900/10 rounded-[2.5rem] sm:rounded-[3rem] flex items-center justify-center mb-6 sm:mb-8 shadow-2xl border border-blue-100 dark:border-blue-800 -rotate-6"><Plus size={32} className="sm:w-12 sm:h-12 text-blue-600" /></div>
                              <h2 className="text-xl sm:text-4xl font-black text-gray-900 dark:text-white mb-3 sm:mb-4 uppercase tracking-tighter">Your Grounded Research</h2>
                              <p className="text-gray-500 max-w-md mb-6 sm:mb-10 text-sm sm:text-lg font-medium italic">Upload documents or links to build your private context-aware knowledge base.</p>
-                             <button onClick={() => setIsAddSourceModalOpen(true)} className="px-6 sm:px-10 py-3.5 sm:py-4.5 bg-blue-600 hover:bg-blue-700 text-white rounded-[1.5rem] sm:rounded-[2rem] text-sm sm:text-xl font-black uppercase tracking-[0.2em] shadow-2xl transition-all transform hover:-translate-y-1 active:scale-[0.95] flex items-center gap-3 overflow-hidden"><Plus size={20} strokeWidth={3} /> Add Source</button>
+                             <button onClick={() => setIsAddSourceModalOpen(true)} className="px-6 sm:px-10 py-3.5 sm:py-4.5 bg-blue-600 hover:bg-blue-700 text-white rounded-[1.5rem] sm:rounded-[2rem] text-sm sm:text-xl font-black uppercase tracking-[0.2em] shadow-2xl transition-all transform hover:-translate-y-1 active:scale-95 flex items-center gap-3"><Plus size={20} strokeWidth={3} /> Add Source</button>
                         </div>
                     ) : (
                         <div className="h-full flex flex-col">
@@ -1471,30 +1460,13 @@ export const NasherNotesPage: React.FC<NasherNotesPageProps> = ({
                                     <p className="text-[10px] sm:text-xs font-bold uppercase tracking-tight">Warning: No sources selected. Grounding is inactive.</p>
                                 </div>
                             )}
-                            <MessageList 
-                                messages={messages} 
-                                loadingState={loadingState} 
-                                onEdit={() => {}} 
-                                language={language} 
-                                onReply={handleSendMessage} 
-                                onTranslate={onTranslate}
-                                onReadAloud={onReadAloud}
-                                onAudioOverview={onAudioOverview}
-                                onMindMap={onMindMap}
-                                onShare={onShare}
-                            />
+                            <MessageList messages={messages} loadingState={loadingState} onEdit={() => {}} language={language} onReply={handleSendMessage} />
                         </div>
                     )}
                 </div>
                 <div className="p-3 sm:p-4 bg-white dark:bg-gray-900 z-30 w-full overflow-hidden">
                     <div className="max-w-4xl mx-auto w-full px-1">
-                        <ChatInput 
-                            onSend={handleSendMessage} 
-                            isLoading={loadingState !== 'idle'} 
-                            onStartLive={onStartLive} 
-                            placeholder="Analyze research material..." 
-                            isLiveActive={isLiveActive}
-                        />
+                        <ChatInput onSend={handleSendMessage} isLoading={loadingState !== 'idle'} onStartLive={() => setIsLiveOpen(true)} placeholder="Analyze research material..." />
                     </div>
                 </div>
             </>
@@ -1502,8 +1474,8 @@ export const NasherNotesPage: React.FC<NasherNotesPageProps> = ({
       </div>
 
       {isAddSourceModalOpen && (
-          <div className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xl p-0 sm:p-4 animate-in fade-in duration-300">
-              <div className="bg-white dark:bg-[#101018] w-full max-w-3xl rounded-t-[2.5rem] sm:rounded-[3rem] shadow-2xl border-t sm:border border-white/10 flex flex-col overflow-hidden max-h-[90vh] relative animate-in slide-in-from-bottom duration-300">
+          <div className="fixed inset-0 z-[600] bg-black/60 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in duration-300">
+              <div className="bg-white dark:bg-[#101018] w-full max-w-sm rounded-[2rem] sm:rounded-[3rem] shadow-2xl border border-white/10 flex flex-col overflow-hidden max-h-[90vh] relative">
                   <button onClick={() => setIsAddSourceModalOpen(false)} className="absolute top-4 right-4 sm:top-8 sm:right-8 p-2 text-gray-400 hover:text-red-500 transition-colors z-20"><X size={24} /></button>
                   <div className="p-6 sm:p-16 overflow-y-auto no-scrollbar">
                       <p className="text-[10px] sm:text-sm text-gray-500 mb-2 font-bold uppercase tracking-[0.2em]">Sources & Grounding</p>
@@ -1516,21 +1488,21 @@ export const NasherNotesPage: React.FC<NasherNotesPageProps> = ({
       )}
 
       {urlModal.isOpen && (
-          <div className="fixed inset-0 z-[1100] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-md p-0 sm:p-4 animate-in fade-in duration-200">
-              <div className="bg-white dark:bg-[#15151e] w-full max-w-sm rounded-t-[2rem] sm:rounded-[2rem] p-6 sm:p-10 shadow-2xl border-t sm:border border-white/10 animate-in slide-in-from-bottom duration-300"><div className="flex items-center gap-4 mb-6"><div className={`p-3 rounded-xl ${urlModal.type === 'youtube' ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-blue-500'}`}>{urlModal.type === 'youtube' ? <Youtube size={24}/> : <Globe size={24}/>}</div><h3 className="text-lg font-black uppercase tracking-tighter text-gray-900 dark:text-white">Insert {urlModal.type === 'youtube' ? 'YouTube URL' : 'Website Link'}</h3></div><input type="url" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} placeholder={`Enter ${urlModal.type} URL...`} className="w-full p-4 bg-gray-50 dark:bg-black border border-gray-200 dark:border-white/10 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium text-sm mb-6" autoFocus /><div className="flex gap-3"><button onClick={() => setUrlModal({ ...urlModal, isOpen: false })} className="flex-1 py-3 text-xs font-black uppercase tracking-widest text-gray-400">Cancel</button><button onClick={handleAddUrlSource} disabled={!urlInput.trim()} className="flex-[2] py-3 bg-blue-600 text-white rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-30">Insert</button></div></div>
+          <div className="fixed inset-0 z-[700] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+              <div className="bg-white dark:bg-[#15151e] w-full max-w-sm rounded-[2rem] p-6 sm:p-10 shadow-2xl border border-white/10"><div className="flex items-center gap-4 mb-6"><div className={`p-3 rounded-xl ${urlModal.type === 'youtube' ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-blue-500'}`}>{urlModal.type === 'youtube' ? <Youtube size={24}/> : <Globe size={24}/>}</div><h3 className="text-lg font-black uppercase tracking-tighter text-gray-900 dark:text-white">Insert {urlModal.type === 'youtube' ? 'YouTube URL' : 'Website Link'}</h3></div><input type="url" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} placeholder={`Enter ${urlModal.type} URL...`} className="w-full p-4 bg-gray-50 dark:bg-black border border-gray-200 dark:border-white/10 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium text-sm mb-6" autoFocus /><div className="flex gap-3"><button onClick={() => setUrlModal({ ...urlModal, isOpen: false })} className="flex-1 py-3 text-xs font-black uppercase tracking-widest text-gray-400">Cancel</button><button onClick={handleAddUrlSource} disabled={!urlInput.trim()} className="flex-[2] py-3 bg-blue-600 text-white rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-30">Insert</button></div></div>
           </div>
       )}
 
       {textModal.isOpen && (
-          <div className="fixed inset-0 z-[1100] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-md p-0 sm:p-4 animate-in fade-in duration-200">
-              <div className="bg-white dark:bg-[#15151e] w-full max-w-md rounded-t-[2rem] sm:rounded-[2rem] p-6 sm:p-10 shadow-2xl border-t sm:border border-white/10 animate-in slide-in-from-bottom duration-300"><div className="flex items-center gap-4 mb-6"><div className={`p-3 rounded-xl bg-amber-50 text-amber-500`}>{<ClipboardList size={24}/>}</div><h3 className="text-lg font-black uppercase tracking-tighter text-gray-900 dark:text-white">Paste Knowledge Block</h3></div><textarea value={textInput} onChange={(e) => setTextInput(e.target.value)} placeholder="Paste text content..." className="w-full h-60 p-4 bg-gray-50 dark:bg-black border border-gray-200 dark:border-white/10 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 transition-all font-medium text-sm mb-6 resize-none no-scrollbar" autoFocus /><div className="flex gap-3"><button onClick={() => setTextModal({ isOpen: false })} className="flex-1 py-3 text-xs font-black uppercase tracking-widest text-gray-400">Cancel</button><button onClick={handleAddTextSource} disabled={!textInput.trim()} className="flex-[2] py-3 bg-blue-600 text-white rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-30">Insert</button></div></div>
+          <div className="fixed inset-0 z-[700] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+              <div className="bg-white dark:bg-[#15151e] w-full max-w-md rounded-[2rem] p-6 sm:p-10 shadow-2xl border border-white/10"><div className="flex items-center gap-4 mb-6"><div className={`p-3 rounded-xl bg-amber-50 text-amber-500`}>{<ClipboardList size={24}/>}</div><h3 className="text-lg font-black uppercase tracking-tighter text-gray-900 dark:text-white">Paste Knowledge Block</h3></div><textarea value={textInput} onChange={(e) => setTextInput(e.target.value)} placeholder="Paste text content..." className="w-full h-60 p-4 bg-gray-50 dark:bg-black border border-gray-200 dark:border-white/10 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 transition-all font-medium text-sm mb-6 resize-none no-scrollbar" autoFocus /><div className="flex gap-3"><button onClick={() => setTextModal({ isOpen: false })} className="flex-1 py-3 text-xs font-black uppercase tracking-widest text-gray-400">Cancel</button><button onClick={handleAddTextSource} disabled={!textInput.trim()} className="flex-[2] py-3 bg-blue-600 text-white rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-30">Insert</button></div></div>
           </div>
       )}
 
       {configModal.isOpen && (
-          <div className="fixed inset-0 z-[1200] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-2xl p-0 sm:p-4 animate-in fade-in duration-300">
+          <div className="fixed inset-0 z-[800] flex items-center justify-center bg-black/70 backdrop-blur-2xl p-4 animate-in fade-in duration-300">
               {configModal.type === 'audio' ? (
-                <div className="bg-white dark:bg-[#101018] rounded-t-[2.5rem] sm:rounded-[3.5rem] w-full max-w-sm p-6 sm:p-10 shadow-2xl border-t sm:border border-white/10 relative overflow-hidden animate-in slide-in-from-bottom duration-300">
+                <div className="bg-white dark:bg-[#101018] rounded-[2.5rem] sm:rounded-[3.5rem] w-full max-w-sm p-6 sm:p-10 shadow-2xl border border-white/10 relative overflow-hidden">
                     <div className="flex items-center gap-4 mb-6 sm:mb-8">
                        <div className="p-3 bg-blue-600 text-white rounded-xl"><Mic size={20} /></div>
                        <h3 className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white uppercase tracking-tighter">Audio Overview</h3>
@@ -1540,7 +1512,7 @@ export const NasherNotesPage: React.FC<NasherNotesPageProps> = ({
                             <label className="text-[9px] sm:text-[10px] font-black uppercase text-gray-400 tracking-[0.3em] mb-3 block">Format</label>
                             <div className="grid grid-cols-2 gap-2">
                                 {['Deep Dive', 'Brief', 'Critique', 'Debate'].map(f => (
-                                    <button key={f} onClick={() => setAudioFormat(f)} className={`py-2 px-3 rounded-lg border text-[9px] font-black uppercase tracking-widest transition-all ${audioFormat === f ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-white/10 text-gray-500'}`}>{f}</button>
+                                    <button key={f} onClick={() => setAudioFormat(f)} className={`py-2 px-3 rounded-lg border text-[9px] font-black uppercase tracking-widest transition-all ${audioFormat === f ? 'bg-blue-600 border-blue-500 text-white shadow-lg' : 'bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-white/10 text-gray-500'}`}>{f}</button>
                                 ))}
                             </div>
                         </div>
@@ -1554,7 +1526,7 @@ export const NasherNotesPage: React.FC<NasherNotesPageProps> = ({
                     <div className="flex gap-4 mt-8 sm:mt-12"><button onClick={() => setConfigModal({ isOpen: false, type: null })} className="flex-1 py-3 text-[10px] font-black uppercase text-gray-400">Abort</button><button onClick={() => executeStudioTool('audio')} className="flex-[2] py-3 bg-blue-600 text-white rounded-xl text-xs font-black uppercase tracking-[0.3em] shadow-2xl">Generate</button></div>
                 </div>
               ) : configModal.type === 'video' ? (
-                <div className="bg-white dark:bg-[#101018] rounded-t-[2.5rem] sm:rounded-[3.5rem] w-full max-w-sm p-6 sm:p-10 shadow-2xl border-t sm:border border-white/10 relative overflow-hidden animate-in slide-in-from-bottom duration-300">
+                <div className="bg-white dark:bg-[#101018] rounded-[2.5rem] sm:rounded-[3.5rem] w-full max-w-sm p-6 sm:p-10 shadow-2xl border border-white/10 relative overflow-hidden">
                     <button onClick={() => setConfigModal({ isOpen: false, type: null })} className="absolute top-6 right-6 p-2 text-gray-400 hover:text-red-500 transition-colors z-20"><X size={20} /></button>
                     <div className="flex items-center gap-4 mb-6">
                        <div className="p-3 bg-orange-600 text-white rounded-xl"><MonitorPlay size={20} /></div>
@@ -1587,7 +1559,7 @@ export const NasherNotesPage: React.FC<NasherNotesPageProps> = ({
                     <button onClick={() => executeStudioTool('video')} className="w-full mt-8 py-4 bg-blue-600 text-white rounded-xl text-xs font-black uppercase tracking-[0.3em]">Generate</button>
                 </div>
               ) : (
-                <div className="bg-white dark:bg-[#101018] rounded-t-[2.5rem] sm:rounded-[2.5rem] w-full max-w-sm p-6 sm:p-10 shadow-2xl border-t sm:border border-white/10 relative overflow-hidden animate-in slide-in-from-bottom duration-300"><div className="relative z-10"><div className="flex items-center gap-3 mb-2"><div className="p-2 bg-blue-600 text-white rounded-lg"><Sparkles size={18} /></div><h3 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-tighter">{configModal.type} Generator</h3></div><div className="space-y-6 pt-6"><div><label className="text-[9px] font-black uppercase text-gray-400 tracking-[0.3em] mb-3 block">Linguistic Target</label><select value={selectedLang} onChange={(e) => setSelectedLang(e.target.value)} className="w-full p-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl outline-none font-bold text-xs">{['English', 'Urdu', 'Roman Urdu'].map(l => <option key={l} value={l}>{l}</option>)}</select></div><div className="grid grid-cols-2 gap-4"><div><label className="text-[9px] font-black uppercase text-gray-400 tracking-[0.3em] mb-3 block">Depth</label><select value={selectedLevel} onChange={(e) => setSelectedLevel(e.target.value)} className="w-full p-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-gray-800 rounded-xl outline-none font-bold text-xs">{['Easy', 'Medium', 'Hard'].map(l => <option key={l} value={l}>{l}</option>)}</select></div><div><label className="text-[9px] font-black uppercase text-gray-400 tracking-[0.3em] mb-3 block">Complexity</label><select value={selectedDetail} onChange={(e) => setSelectedDetail(e.target.value)} className="w-full p-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-gray-800 rounded-xl outline-none font-bold text-xs">{['Short', 'Detailed', 'Deep'].map(l => <option key={l} value={l}>{l}</option>)}</select></div></div></div><div className="flex gap-4 mt-8 sm:mt-12"><button onClick={() => setConfigModal({ isOpen: false, type: null })} className="flex-1 py-3 text-[10px] font-black uppercase tracking-widest text-gray-400">Abort</button><button onClick={() => executeStudioTool()} className="flex-[2] py-3 bg-blue-600 text-white rounded-xl text-xs font-black uppercase tracking-[0.3em]">Synthesis</button></div></div></div>
+                <div className="bg-white dark:bg-[#101018] rounded-[2.5rem] w-full max-w-sm p-6 sm:p-10 shadow-2xl border border-white/10 relative overflow-hidden"><div className="relative z-10"><div className="flex items-center gap-3 mb-2"><div className="p-2 bg-blue-600 text-white rounded-lg"><Sparkles size={18} /></div><h3 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-tighter">{configModal.type} Generator</h3></div><div className="space-y-6 pt-6"><div><label className="text-[9px] font-black uppercase text-gray-400 tracking-[0.3em] mb-3 block">Linguistic Target</label><select value={selectedLang} onChange={(e) => setSelectedLang(e.target.value)} className="w-full p-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl outline-none font-bold text-xs">{['English', 'Urdu', 'Roman Urdu'].map(l => <option key={l} value={l}>{l}</option>)}</select></div><div className="grid grid-cols-2 gap-4"><div><label className="text-[9px] font-black uppercase text-gray-400 tracking-[0.3em] mb-3 block">Depth</label><select value={selectedLevel} onChange={(e) => setSelectedLevel(e.target.value)} className="w-full p-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-gray-800 rounded-xl outline-none font-bold text-xs">{['Easy', 'Medium', 'Hard'].map(l => <option key={l} value={l}>{l}</option>)}</select></div><div><label className="text-[9px] font-black uppercase text-gray-400 tracking-[0.3em] mb-3 block">Complexity</label><select value={selectedDetail} onChange={(e) => setSelectedDetail(e.target.value)} className="w-full p-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-gray-800 rounded-xl outline-none font-bold text-xs">{['Short', 'Detailed', 'Deep'].map(l => <option key={l} value={l}>{l}</option>)}</select></div></div></div><div className="flex gap-4 mt-8 sm:mt-12"><button onClick={() => setConfigModal({ isOpen: false, type: null })} className="flex-1 py-3 text-[10px] font-black uppercase tracking-widest text-gray-400">Abort</button><button onClick={() => executeStudioTool()} className="flex-[2] py-3 bg-blue-600 text-white rounded-xl text-xs font-black uppercase tracking-[0.3em]">Synthesis</button></div></div></div>
               )}
           </div>
       )}

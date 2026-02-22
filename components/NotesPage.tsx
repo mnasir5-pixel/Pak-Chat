@@ -1,7 +1,5 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import * as docx from 'docx';
-import saveAs from 'file-saver';
 import { SUPPORTED_LANGUAGES } from '../constants';
 import { ActionModal } from './ActionModal';
 
@@ -17,7 +15,6 @@ interface NotesPageProps {
   onTranscribe?: (audioFile: File) => Promise<string>; // New prop for audio transcription
   language: string;
   onMenuClick: () => void;
-  onStartLive?: () => void;
 }
 
 // Helper to detect text direction
@@ -240,7 +237,7 @@ const TableGridPicker: React.FC<{
 };
 
 
-export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, language, onMenuClick, onStartLive }) => {
+export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, language, onMenuClick }) => {
   const [notes, setNotes] = useState<Note[]>(() => {
     try {
       const saved = localStorage.getItem('naxi_notes_data');
@@ -413,38 +410,24 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
     setNotes(prev => [newNote, ...prev]);
   };
 
-  const handleDownloadNote = async (id: string, e: React.MouseEvent) => {
+  const handleDownloadNote = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
     setMenuOpenId(null);
     const note = notes.find(n => n.id === id);
     if (!note) return;
-
-    try {
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = note.content;
-      const text = tempDiv.innerText || tempDiv.textContent || "";
-
-      const doc = new docx.Document({
-        sections: [{
-          properties: {},
-          children: [
-            new docx.Paragraph({
-              children: [
-                new docx.TextRun({
-                  text: text,
-                }),
-              ],
-            }),
-          ],
-        }],
-      });
-
-      const blob = await docx.Packer.toBlob(doc);
-      saveAs(blob, `${note.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'note'}.docx`);
-    } catch (err) {
-      console.error("Export failed", err);
-    }
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = note.content.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n');
+    const text = tempDiv.innerText || tempDiv.textContent || "";
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${note.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'note'}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   // --- SHARE FUNCTIONALITY ---
@@ -768,9 +751,6 @@ export const NotesPage: React.FC<NotesPageProps> = ({ onAiAssist, onTranscribe, 
                                     <button onClick={() => handleAiAction('grammar')} disabled={isAiProcessing} className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Fix Grammar">✨</button>
                                     <button onClick={() => handleAiAction('summarize')} disabled={isAiProcessing} className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Summarize">📝</button>
                                     <button onClick={() => setShowTranslate(!showTranslate)} disabled={isAiProcessing} className={`p-1.5 rounded-lg transition-colors ${showTranslate ? 'text-green-600 bg-green-50' : 'text-gray-500 hover:text-green-600'}`} title="Translate">🌐</button>
-                                    {onStartLive && (
-                                        <button onClick={onStartLive} className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Live Conversation">🎙️</button>
-                                    )}
                                 </div>
                            </div>
                            

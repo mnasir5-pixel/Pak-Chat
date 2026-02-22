@@ -38,8 +38,7 @@ export const GeneralNotesChatPage: React.FC<GeneralNotesChatPageProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadingState, setLoadingState] = useState<LoadingState>('idle');
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
-  // Fixed: Added missing 'mode' property to satisfy ChatConfig interface
-  const [chatConfig, setChatConfig] = useState<ChatConfig>({ style: 'default', length: 'default', mode: 'assistant' });
+  const [chatConfig, setChatConfig] = useState<ChatConfig>({ style: 'default', length: 'default' });
   const [isLiveOpen, setIsLiveOpen] = useState(false);
   
   const chatServiceRef = useRef<ChatService | null>(null);

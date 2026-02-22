@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { ChatSession } from '../types';
 import { ActionModal } from './ActionModal';
@@ -51,9 +52,8 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
 
   const getFilteredSessions = (catId: CategoryID) => {
       switch(catId) {
-          // Fixed: Simplified comparison to only use valid session types from ChatSession['type']
-          case 'language-tutors': return validSessions.filter(s => s.type === 'tutor');
-          default: return validSessions.filter(s => s.type === catId as any);
+          case 'language-tutors': return validSessions.filter(s => s.type === 'tutor' || s.type === 'english-tutor' || s.type === 'language-tutor');
+          default: return validSessions.filter(s => s.type === catId);
       }
   };
 
@@ -78,7 +78,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                 <button 
                     key={cat.id}
                     onClick={() => setSelectedCategory(cat.id as CategoryID)} 
-                    className="group relative flex flex-col p-8 bg-white dark:bg-[#0a0a0e] border border-gray-100 dark:border-white/5 rounded-[2.5rem] shadow-sm hover:shadow-2xl hover:border-blue-500/30 transition-all text-left overflow-hidden active:scale-[0.98]"
+                    className="group relative flex flex-col p-8 bg-white dark:bg-[#0a0a0e] border border-gray-100 dark:border-white/5 rounded-[2.5rem] shadow-sm hover:shadow-2xl hover:border-blue-500/30 transition-all text-left overflow-hidden active:scale-95"
                 >
                     <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-6 transition-all duration-500 group-hover:scale-110 shadow-lg ${
                         cat.color === 'blue' ? 'bg-blue-600 text-white' :
@@ -143,8 +143,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                     <div className="min-w-0">
                         <h3 className="font-bold text-gray-800 dark:text-white truncate group-hover:text-blue-600 transition-colors text-sm uppercase tracking-tight">{session.title}</h3>
                         <div className="flex items-center gap-3 mt-1">
-                            {/* Fixed: Removed non-existent createdAt property */}
-                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1"><Clock size={10} /> {new Date(session.timestamp).toLocaleDateString()}</span>
+                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1"><Clock size={10} /> {new Date(session.createdAt || session.timestamp).toLocaleDateString()}</span>
                             {session.subjectId && <span className="text-[9px] font-black bg-purple-100 dark:bg-purple-900/40 text-purple-600 px-2 py-0.5 rounded-full uppercase">{session.subjectId}</span>}
                         </div>
                     </div>

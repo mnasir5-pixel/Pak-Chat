@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Chat, GenerateContentResponse, Part, Modality } from "@google/genai";
 import { GEMINI_MODEL, getSystemInstructionFromConfig } from "../constants";
 import { CONFIG } from "./config";
@@ -14,8 +13,7 @@ export class ChatService {
   private currentModel: string = GEMINI_MODEL;
   private history: { role: string; content: string }[] = [];
   private baseSystemInstruction: string;
-  // Added missing mode property to match ChatConfig interface
-  private activeConfig: ChatConfig = { style: 'default', length: 'default', mode: 'assistant' };
+  private activeConfig: ChatConfig = { style: 'default', length: 'default' };
   private internalHistory: { role: 'user' | 'model', content: string }[] = [];
 
   constructor(systemInstruction: string, config?: ChatConfig) {
@@ -24,9 +22,9 @@ export class ChatService {
     this.provider = CONFIG.PROVIDER || 'gemini';
 
     if (this.provider === 'gemini') {
-      // Obtained API key exclusively from process.env.API_KEY
-      if (process.env.API_KEY) {
-        this.geminiClient = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const key = CONFIG.GEMINI_API_KEY || process.env.API_KEY || '';
+      if (key) {
+        this.geminiClient = new GoogleGenAI({ apiKey: key });
         this.initGeminiSession();
       }
     } else {
@@ -64,9 +62,9 @@ export class ChatService {
   }
 
   public static async translateText(text: string, targetLanguage: string): Promise<string> {
-      // Obtained API key exclusively from process.env.API_KEY
-      if (!process.env.API_KEY) return text; 
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const key = CONFIG.GEMINI_API_KEY || process.env.API_KEY || '';
+      if (!key) return text; 
+      const ai = new GoogleGenAI({ apiKey: key });
       let delay = INITIAL_RETRY_DELAY;
       for (let i = 0; i < MAX_RETRIES; i++) {
         try {
@@ -74,7 +72,6 @@ export class ChatService {
               model: 'gemini-3-flash-preview',
               contents: `Translate the following text into ${targetLanguage}. Output ONLY the translation. Text: ${text}`
           });
-          // Fixed: Use response.text directly (property, not a method)
           return response.text || text;
         } catch (e: any) {
           if ((e.message?.includes('429') || e.message?.includes('RESOURCE_EXHAUSTED')) && i < MAX_RETRIES - 1) {
@@ -82,25 +79,24 @@ export class ChatService {
             delay *= 2;
             continue;
           }
-          return text;
+          throw e; // Propagate for UI handling
         }
       }
       return text;
   }
 
   public static async improveText(text: string): Promise<string> {
-    // Obtained API key exclusively from process.env.API_KEY
-    if (!process.env.API_KEY || !text.trim()) return text;
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = CONFIG.GEMINI_API_KEY || process.env.API_KEY || '';
+    if (!key || !text.trim()) return text;
+    const ai = new GoogleGenAI({ apiKey: key });
     try {
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: `Act as a professional editor. Improve grammar and clarity. Text: "${text}"`,
       });
-      // Fixed: Use response.text directly (property, not a method)
       return response.text?.trim() || text;
     } catch (e) {
-      return text;
+      throw e;
     }
   }
 
@@ -123,133 +119,9 @@ export class ChatService {
     }
   }
 
-  public async generateVideo(prompt: string, aspectRatio: '16:9' | '9:16' = '16:9'): Promise<string> {
-    // Obtained API key exclusively from process.env.API_KEY
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    let delay = INITIAL_RETRY_DELAY;
-    let lastError = null;
-
-    for (let i = 0; i < MAX_RETRIES; i++) {
-      try {
-        let operation = await ai.models.generateVideos({
-          model: 'veo-3.1-fast-generate-preview',
-          prompt: prompt,
-          config: {
-            numberOfVideos: 1,
-            resolution: '720p',
-            aspectRatio: aspectRatio
-          }
-        });
-
-        while (!operation.done) {
-          await new Promise(resolve => setTimeout(resolve, 5000));
-          operation = await ai.operations.getVideosOperation({ operation: operation });
-        }
-
-        const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-        if (!downloadLink) throw new Error("Video generation failed");
-        // Fixed: Use process.env.API_KEY directly
-        return `${downloadLink}&key=${process.env.API_KEY}`;
-      } catch (e: any) {
-        lastError = e;
-        const isQuota = e.message?.includes('429') || e.message?.includes('RESOURCE_EXHAUSTED');
-        if (isQuota && i < MAX_RETRIES - 1) {
-          await this.sleep(delay);
-          delay *= 2;
-          continue;
-        }
-        throw new Error(this.parseGeminiError(e));
-      }
-    }
-    throw lastError;
-  }
-
-  public async generateImage(prompt: string, aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1'): Promise<string> {
-    // Obtained API key exclusively from process.env.API_KEY
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    let delay = INITIAL_RETRY_DELAY;
-    for (let i = 0; i < MAX_RETRIES; i++) {
-      try {
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash-image',
-          contents: { parts: [{ text: prompt }] },
-          config: { imageConfig: { aspectRatio } }
-        });
-        const candidate = response.candidates?.[0];
-        for (const part of candidate?.content?.parts || []) {
-          if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
-        }
-        throw new Error("No image generated.");
-      } catch (e: any) {
-        if ((e.message?.includes('429') || e.message?.includes('RESOURCE_EXHAUSTED')) && i < MAX_RETRIES - 1) {
-          await this.sleep(delay); delay *= 2; continue;
-        }
-        throw new Error(this.parseGeminiError(e));
-      }
-    }
-    throw new Error("Generation failed");
-  }
-
-  public async editImage(base64Image: string, editPrompt: string): Promise<string> {
-    // Obtained API key exclusively from process.env.API_KEY
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const data = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
-    
-    let delay = INITIAL_RETRY_DELAY;
-
-    for (let i = 0; i < MAX_RETRIES; i++) {
-      try {
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash-image',
-          contents: {
-            parts: [
-              { inlineData: { data, mimeType: 'image/png' } },
-              { text: `Modify this image: ${editPrompt}` }
-            ]
-          }
-        });
-
-        const candidate = response.candidates?.[0];
-        if (!candidate?.content?.parts) throw new Error("Image editing failed.");
-
-        for (const part of candidate.content.parts) {
-          if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
-        }
-        throw new Error("No image returned.");
-      } catch (e: any) {
-        const isQuota = e.message?.includes('429') || e.message?.includes('RESOURCE_EXHAUSTED');
-        if (isQuota && i < MAX_RETRIES - 1) {
-          await this.sleep(delay);
-          delay *= 2;
-          continue;
-        }
-        throw new Error(this.parseGeminiError(e));
-      }
-    }
-    throw new Error("Maximum retries reached.");
-  }
-
-  public async professionallyRephrasePrompt(rawTranscript: string): Promise<string> {
-    // Obtained API key exclusively from process.env.API_KEY
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Refine this transcript into a clear AI image prompt: "${rawTranscript}". Output ONLY the refined English prompt.`
-      });
-      // Fixed: Use response.text directly (property, not a method)
-      return response.text || rawTranscript;
-    } catch (e) {
-      return rawTranscript;
-    }
-  }
-
   public async generateSpeech(text: string, voice: string = 'Kore'): Promise<string> {
-    // Obtained API key exclusively from process.env.API_KEY
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = CONFIG.GEMINI_API_KEY || process.env.API_KEY || '';
+    const ai = new GoogleGenAI({ apiKey: key });
     
     let delay = INITIAL_RETRY_DELAY;
     for (let i = 0; i < MAX_RETRIES; i++) {
@@ -269,7 +141,7 @@ export class ChatService {
         if ((e.message?.includes('429') || e.message?.includes('RESOURCE_EXHAUSTED')) && i < MAX_RETRIES - 1) {
           await this.sleep(delay); delay *= 2; continue;
         }
-        throw new Error(this.parseGeminiError(e));
+        throw e;
       }
     }
     throw new Error("Speech failed");
@@ -277,9 +149,8 @@ export class ChatService {
 
   public async startChatWithHistory(history: { role: 'user' | 'model', content: string }[]) {
     this.internalHistory = [...history];
-    
-    // Obtained API key exclusively from process.env.API_KEY
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = CONFIG.GEMINI_API_KEY || process.env.API_KEY || '';
+    const ai = new GoogleGenAI({ apiKey: key });
 
     if (this.provider === 'gemini') {
       const formattedHistory = history
@@ -302,7 +173,7 @@ export class ChatService {
     }
   }
 
-  async *sendMessageStream(message: string, attachment?: File, signal?: AbortSignal): AsyncGenerator<string, void, unknown> {
+  async *sendMessageStream(message: string, attachment?: File): AsyncGenerator<string, void, unknown> {
     if (this.provider === 'gemini') {
        if (!this.geminiChat) this.initGeminiSession();
        if (!this.geminiChat) { yield "❌ **Error**: Session not initialized."; return; }
@@ -317,10 +188,6 @@ export class ChatService {
            const resultStream = await this.geminiChat.sendMessageStream({ message: msgParam });
            let collectedGroundingMetadata: any = null;
            for await (const chunk of resultStream) {
-             if (signal?.aborted) {
-               return;
-             }
-             // Fixed: Use chunk.text directly (property, not a method)
              const text = (chunk as GenerateContentResponse).text;
              if (text) yield text;
              if (chunk.candidates?.[0]?.groundingMetadata) collectedGroundingMetadata = chunk.candidates[0].groundingMetadata;
@@ -339,7 +206,7 @@ export class ChatService {
              yield `⚠️ **Capacity Warning**: Retrying transmission in ${delay / 1000}s...`;
              await this.sleep(delay); delay *= 2; continue;
            }
-           throw new Error(this.parseGeminiError(error));
+           throw error;
          }
        }
     }

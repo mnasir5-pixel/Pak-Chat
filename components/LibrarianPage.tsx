@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
@@ -140,7 +139,40 @@ export const LibrarianPage: React.FC<LibrarianPageProps> = ({
 
   return (
     <div className="flex h-full w-full bg-[#f8fafc] dark:bg-[#050508] relative overflow-hidden">
-      {/* Side "Retrieved Files" panel removed as requested by user highlight */}
+      <div className={`bg-white dark:bg-black/40 border-r border-gray-200 dark:border-white/5 flex flex-col shrink-0 transition-all duration-300 w-80 hidden lg:flex`}>
+        <div className="h-16 px-6 flex items-center gap-3 border-b border-gray-100 dark:border-white/5 bg-white dark:bg-transparent shrink-0">
+          <FileCheck size={20} className="text-blue-600" />
+          <h2 className="font-black text-[10px] uppercase tracking-[0.2em] text-gray-800 dark:text-gray-200">Retrieved Files</h2>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar">
+          {fetchedFiles.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center p-6 opacity-20">
+               <CloudDownload size={48} className="mb-4" />
+               <p className="text-[10px] font-black uppercase tracking-widest">No documents fetched yet</p>
+            </div>
+          ) : (
+            fetchedFiles.map(file => (
+              <div key={file.id} className="p-4 bg-white dark:bg-gray-900 border border-gray-100 dark:border-white/5 rounded-2xl shadow-sm group hover:border-blue-500 transition-all animate-in slide-in-from-left-2">
+                 <div className="flex items-start gap-3 mb-4">
+                    <div className="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-xl">
+                       <FileText size={18} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                       <p className="text-xs font-bold truncate dark:text-white uppercase tracking-tight">{file.name}</p>
+                       <p className="text-[8px] text-gray-400 font-black mt-0.5 uppercase tracking-widest">{file.format} • {file.size}</p>
+                    </div>
+                 </div>
+                 <button 
+                  onClick={() => {}}
+                  className="w-full py-2 bg-blue-600 text-white rounded-xl text-[9px] font-black uppercase tracking-[0.2em] shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all active:scale-95"
+                 >
+                   Download Resource
+                 </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
 
       <div className="flex-1 flex flex-col min-w-0 bg-[#f8fafc] dark:bg-[#050508]">
         <div className="h-16 px-6 flex items-center justify-between border-b border-gray-200 dark:border-white/5 bg-white/80 dark:bg-black/40 backdrop-blur-md z-50 shrink-0">

@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI, Chat, GenerateContentResponse, Part } from "@google/genai";
 import { ChatMessage } from '../types';
@@ -7,6 +6,7 @@ import { CONFIG } from '../services/config';
 import { 
   Play, Code2, Monitor, RotateCcw, Maximize2, Minimize2, 
   Terminal, Bug, Cpu, Layers, RefreshCw, X, Menu, ArrowRight, Mic,
+  // Fix: Added missing MessageSquare import from lucide-react
   MessageSquare
 } from 'lucide-react';
 
@@ -102,9 +102,9 @@ export const BuilderPage: React.FC<BuilderPageProps> = ({ onMenuClick }) => {
 
   const initChat = () => {
     if (!chatSession.current) {
-      // Fixed: Obtained API key exclusively from process.env.API_KEY
-      if (!process.env.API_KEY) throw new Error("API Key missing.");
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const apiKey = CONFIG.GEMINI_API_KEY || localStorage.getItem('pakchat_gemini_api_key') || process.env.API_KEY || '';
+      if (!apiKey) throw new Error("API Key missing.");
+      const ai = new GoogleGenAI({ apiKey });
       const history = messages.length > 1 ? messages.slice(1).map(m => ({
         role: m.role,
         parts: [{ text: m.content }]
@@ -154,7 +154,6 @@ export const BuilderPage: React.FC<BuilderPageProps> = ({ onMenuClick }) => {
       setAttachment(null); setAttachmentPreview(null);
       let fullText = '';
       for await (const chunk of stream) {
-        // Fixed: Access text property directly
         const text = (chunk as GenerateContentResponse).text || '';
         fullText += text;
         setMessages(p => {
@@ -248,7 +247,7 @@ export const BuilderPage: React.FC<BuilderPageProps> = ({ onMenuClick }) => {
                        </button>
                    ))}
                </div>
-               <button onClick={() => setIsFullScreen(!isFullScreen)} className="p-2 text-gray-400 hover:text-blue-500 transition-colors">{isFullScreen ? <Minimize2 size={18}/> : <Maximize2 size={18}/>}</button>
+               <button onClick={() => setIsFullScreen(!isFullScreen)} className="p-2 text-gray-500 hover:text-blue-500 transition-colors">{isFullScreen ? <Minimize2 size={18}/> : <Maximize2 size={18}/>}</button>
            </div>
 
            <div className="flex-1 flex relative">
