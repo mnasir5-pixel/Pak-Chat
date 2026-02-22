@@ -1,7 +1,0 @@
-{
-  "name": "V.B.Pak Chat1p1",
-  "description": "An all-in-one creative workbench leveraging Gemini's multi-modal capabilities for text generation, high-fidelity image creation, and natural text-to-speech synthesis.",
-  "requestFramePermissions": [
-    "microphone"
-  ]
-}

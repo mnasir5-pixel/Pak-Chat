@@ -1,9 +1,0 @@
-
-{
-  "name": "Pak Chat",
-  "description": "A high-performance, intelligent AI assistant interface powered by Gemini 2.5 Flash. Features real-time streaming, markdown formatting, and a clean, responsive chat experience.",
-  "requestFramePermissions": [
-    "microphone",
-    "camera"
-  ]
-}
