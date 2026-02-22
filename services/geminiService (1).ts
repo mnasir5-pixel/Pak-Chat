@@ -23,7 +23,8 @@ export class ChatService {
   // OpenAI/DeepSeek specific
   private history: { role: string; content: string }[] = [];
   private baseSystemInstruction: string;
-  private activeConfig: ChatConfig = { style: 'default', length: 'default' };
+  // Added missing mode property to match ChatConfig interface
+  private activeConfig: ChatConfig = { style: 'default', length: 'default', mode: 'assistant' };
   
   // Helper to track internal message history for fallback recreation
   private internalHistory: { role: 'user' | 'model', content: string }[] = [];
@@ -35,9 +36,9 @@ export class ChatService {
 
     // 1. Initialize Provider
     if (this.provider === 'gemini') {
-      const key = CONFIG.GEMINI_API_KEY || process.env.API_KEY || '';
-      if (key) {
-        this.geminiClient = new GoogleGenAI({ apiKey: key });
+      // Fixed: Obtained API key exclusively from process.env.API_KEY
+      if (process.env.API_KEY) {
+        this.geminiClient = new GoogleGenAI({ apiKey: process.env.API_KEY });
         this.initGeminiSession();
       }
     } else {
@@ -74,10 +75,10 @@ export class ChatService {
 
   // --- STATIC HELPER FOR TRANSLATION ---
   public static async translateText(text: string, targetLanguage: string): Promise<string> {
-      const key = CONFIG.GEMINI_API_KEY || process.env.API_KEY || '';
-      if (!key) return text; 
+      // Fixed: Obtained API key exclusively from process.env.API_KEY
+      if (!process.env.API_KEY) return text; 
       
-      const ai = new GoogleGenAI({ apiKey: key });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       let delay = INITIAL_RETRY_DELAY;
 
       for (let i = 0; i < MAX_RETRIES; i++) {
@@ -86,6 +87,7 @@ export class ChatService {
               model: 'gemini-3-flash-preview',
               contents: `Translate the following text into ${targetLanguage}. Output ONLY the translation. Text: ${text}`
           });
+          // Fixed: Access text property directly
           return response.text || text;
         } catch (e: any) {
           const isQuota = e.message?.includes('429') || e.message?.includes('RESOURCE_EXHAUSTED');
@@ -103,15 +105,16 @@ export class ChatService {
 
   // --- STATIC HELPER FOR GRAMMAR & IMPROVEMENT ---
   public static async improveText(text: string): Promise<string> {
-    const key = CONFIG.GEMINI_API_KEY || process.env.API_KEY || '';
-    if (!key || !text.trim()) return text;
+    // Fixed: Obtained API key exclusively from process.env.API_KEY
+    if (!process.env.API_KEY || !text.trim()) return text;
     
-    const ai = new GoogleGenAI({ apiKey: key });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: `Act as a professional editor. If the following text is not in English, translate it to polished, natural English. If it is already in English, correct any grammatical errors and improve the wording for better clarity and impact. Return ONLY the final improved text. Do not add explanations, greetings, or quotes.\n\nText: "${text}"`,
       });
+      // Fixed: Access text property directly
       return response.text?.trim() || text;
     } catch (e) {
       console.error("Text Improvement API Error:", e);
@@ -139,14 +142,16 @@ export class ChatService {
   }
 
   public async generateVideo(prompt: string, aspectRatio: '16:9' | '9:16' = '16:9'): Promise<string> {
-    if (!this.geminiClient) throw new Error("API Key required");
+    // Fixed: Obtained API key exclusively from process.env.API_KEY
+    if (!process.env.API_KEY) throw new Error("API Key required");
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     let delay = INITIAL_RETRY_DELAY;
     let lastError = null;
 
     for (let i = 0; i < MAX_RETRIES; i++) {
       try {
-        let operation = await this.geminiClient.models.generateVideos({
+        let operation = await ai.models.generateVideos({
           model: 'veo-3.1-fast-generate-preview',
           prompt: prompt,
           config: {
@@ -158,12 +163,13 @@ export class ChatService {
 
         while (!operation.done) {
           await new Promise(resolve => setTimeout(resolve, 5000));
-          operation = await this.geminiClient.operations.getVideosOperation({ operation: operation });
+          operation = await ai.operations.getVideosOperation({ operation: operation });
         }
 
         const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
         if (!downloadLink) throw new Error("Video generation failed");
-        return `${downloadLink}&key=${CONFIG.GEMINI_API_KEY || process.env.API_KEY}`;
+        // Fixed: Use process.env.API_KEY directly
+        return `${downloadLink}&key=${process.env.API_KEY}`;
       } catch (e: any) {
         lastError = e;
         const isQuota = e.message?.includes('429') || e.message?.includes('RESOURCE_EXHAUSTED');
@@ -179,14 +185,16 @@ export class ChatService {
   }
 
   public async generateImage(prompt: string, aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1'): Promise<string> {
-    if (!this.geminiClient) throw new Error("API Key required");
+    // Fixed: Obtained API key exclusively from process.env.API_KEY
+    if (!process.env.API_KEY) throw new Error("API Key required");
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     let delay = INITIAL_RETRY_DELAY;
     let lastError = null;
 
     for (let i = 0; i < MAX_RETRIES; i++) {
       try {
-        const response = await this.geminiClient.models.generateContent({
+        const response = await ai.models.generateContent({
           model: 'gemini-2.5-flash-image',
           contents: { parts: [{ text: prompt }] },
           config: {
@@ -216,14 +224,16 @@ export class ChatService {
   }
 
   public async editImage(base64Image: string, editPrompt: string): Promise<string> {
-    if (!this.geminiClient) throw new Error("API Key required");
+    // Fixed: Obtained API key exclusively from process.env.API_KEY
+    if (!process.env.API_KEY) throw new Error("API Key required");
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const data = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
     
     let delay = INITIAL_RETRY_DELAY;
 
     for (let i = 0; i < MAX_RETRIES; i++) {
       try {
-        const response = await this.geminiClient.models.generateContent({
+        const response = await ai.models.generateContent({
           model: 'gemini-2.5-flash-image',
           contents: {
             parts: [
@@ -254,13 +264,16 @@ export class ChatService {
   }
 
   public async professionallyRephrasePrompt(rawTranscript: string): Promise<string> {
-    if (!this.geminiClient) throw new Error("API Key required");
+    // Fixed: Obtained API key exclusively from process.env.API_KEY
+    if (!process.env.API_KEY) throw new Error("API Key required");
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     try {
-      const response = await this.geminiClient.models.generateContent({
+      const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: `Refine this transcript into a clear AI image prompt: "${rawTranscript}". Output ONLY the refined English prompt.`
       });
+      // Fixed: Access text property directly
       return response.text || rawTranscript;
     } catch (e) {
       return rawTranscript;
@@ -268,13 +281,15 @@ export class ChatService {
   }
 
   public async generateSpeech(text: string, voice: string = 'Kore'): Promise<string> {
-    if (!this.geminiClient) throw new Error("API Key required");
+    // Fixed: Obtained API key exclusively from process.env.API_KEY
+    if (!process.env.API_KEY) throw new Error("API Key required");
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     let delay = INITIAL_RETRY_DELAY;
 
     for (let i = 0; i < MAX_RETRIES; i++) {
       try {
-        const response = await this.geminiClient.models.generateContent({
+        const response = await ai.models.generateContent({
           model: "gemini-2.5-flash-preview-tts",
           contents: [{ parts: [{ text }] }],
           config: {
@@ -372,6 +387,7 @@ export class ChatService {
            let collectedGroundingMetadata: any = null;
 
            for await (const chunk of resultStream) {
+             // Fixed: Access text property directly
              const text = (chunk as GenerateContentResponse).text;
              if (text) yield text;
              if (chunk.candidates?.[0]?.groundingMetadata) {

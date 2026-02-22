@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Settings, MoreVertical, Book, Trash2, Edit2, Globe, Sun, Moon, Laptop, ChevronRight, X, Menu } from 'lucide-react';
-import { ChatSession } from '../types';
+import { Plus, Settings, MoreVertical, Book, Trash2, Edit2, Globe, Sun, Moon, Laptop, ChevronRight, X, Menu, Ruler, Zap } from 'lucide-react';
+import { ChatSession, ChatConfig } from '../types';
 import { ActionModal } from './ActionModal';
 
 interface NotesLMHomeProps {
@@ -15,6 +15,8 @@ interface NotesLMHomeProps {
   theme: 'light' | 'dark' | 'system';
   onThemeChange: (theme: 'light' | 'dark' | 'system') => void;
   onMenuClick: () => void;
+  notesLmConfig: ChatConfig;
+  onNotesLmConfigChange: (config: ChatConfig) => void;
 }
 
 export const NotesLMHome: React.FC<NotesLMHomeProps> = ({
@@ -27,10 +29,12 @@ export const NotesLMHome: React.FC<NotesLMHomeProps> = ({
   onLanguageChange,
   theme,
   onThemeChange,
-  onMenuClick
+  onMenuClick,
+  notesLmConfig,
+  onNotesLmConfigChange
 }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [settingsView, setSettingsView] = useState<'main' | 'language' | 'theme'>('main');
+  const [settingsView, setSettingsView] = useState<'main' | 'language' | 'theme' | 'length'>('main');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [renameModal, setRenameModal] = useState<{ isOpen: boolean; id: string; name: string }>({ isOpen: false, id: '', name: '' });
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; id: string }>({ isOpen: false, id: '' });
@@ -44,8 +48,7 @@ export const NotesLMHome: React.FC<NotesLMHomeProps> = ({
         setIsSettingsOpen(false);
         setSettingsView('main');
       }
-      // If we clicked outside any notebook menu, close active menus
-      if (!(event.target as HTMLElement).closest('.notebook-menu-trigger')) {
+      if (!(event.target as HTMLElement).closest('.notebook-menu-trigger') && !(event.target as HTMLElement).closest('.notebook-menu-popover')) {
           setActiveMenuId(null);
       }
     };
@@ -57,8 +60,6 @@ export const NotesLMHome: React.FC<NotesLMHomeProps> = ({
     { name: 'English', code: 'en-US' },
     { name: 'Urdu', code: 'ur-PK' },
     { name: 'Roman Urdu', code: 'ur-Roman' },
-    { name: 'Seraiki', code: 'sr-PK' },
-    { name: 'Spanish', code: 'es-ES' },
     { name: 'Mandarin Chinese', code: 'zh-CN' },
     { name: 'Arabic', code: 'ar-SA' },
     { name: 'French', code: 'fr-FR' }
@@ -69,15 +70,17 @@ export const NotesLMHome: React.FC<NotesLMHomeProps> = ({
       setDeleteModal({ isOpen: false, id: '' });
   };
 
+  const handleConfigUpdate = (key: keyof ChatConfig, value: any) => {
+    onNotesLmConfigChange({ ...notesLmConfig, [key]: value });
+  };
+
   return (
     <div className="min-h-full w-full bg-white dark:bg-[#050508] transition-colors duration-300 flex flex-col overflow-y-auto no-scrollbar" onClick={() => setActiveMenuId(null)}>
-      {/* Header */}
-      <header className="h-16 px-6 flex items-center justify-between border-b border-gray-100 dark:border-white/5 shrink-0 bg-white/80 dark:bg-black/40 backdrop-blur-md sticky top-0 z-50">
+      <header className="h-16 px-6 flex items-center justify-between border-b border-gray-200 dark:border-white/5 shrink-0 bg-white/80 dark:bg-black/40 backdrop-blur-md sticky top-0 z-50">
         <div className="flex items-center gap-3">
           <button 
             onClick={(e) => { e.stopPropagation(); onMenuClick(); }}
             className="p-2 -ml-2 text-gray-400 hover:text-blue-600 transition-colors"
-            title="Open Menu"
           >
             <Menu size={22} />
           </button>
@@ -114,6 +117,21 @@ export const NotesLMHome: React.FC<NotesLMHomeProps> = ({
                         <ChevronRight size={14} />
                       </div>
                     </button>
+
+                    <button 
+                      onClick={() => setSettingsView('length')}
+                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl transition-colors group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Ruler size={18} className="text-gray-400 group-hover:text-blue-500" />
+                        <span className="text-sm font-bold text-gray-700 dark:text-gray-300">Response Depth</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-gray-400">
+                        <span className="text-xs capitalize">{notesLmConfig.length}</span>
+                        <ChevronRight size={14} />
+                      </div>
+                    </button>
+
                     <button 
                       onClick={() => setSettingsView('theme')}
                       className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl transition-colors group"
@@ -150,6 +168,26 @@ export const NotesLMHome: React.FC<NotesLMHomeProps> = ({
                   </div>
                 )}
 
+                {settingsView === 'length' && (
+                  <div>
+                    <div className="px-4 py-2 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
+                       <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Response Length</span>
+                       <button onClick={() => setSettingsView('main')} className="p-1 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg"><X size={14}/></button>
+                    </div>
+                    <div className="py-1">
+                      {['default', 'short', 'long'].map(len => (
+                        <button 
+                          key={len}
+                          onClick={() => { handleConfigUpdate('length', len); setSettingsView('main'); }}
+                          className={`w-full text-left px-4 py-2.5 text-sm transition-colors capitalize ${notesLmConfig.length === len ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/10 font-bold' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                        >
+                          {len}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {settingsView === 'theme' && (
                   <div>
                     <div className="px-4 py-2 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
@@ -178,14 +216,12 @@ export const NotesLMHome: React.FC<NotesLMHomeProps> = ({
             )}
           </div>
           
-          <div className="w-8 h-8 rounded-full bg-emerald-700 text-white flex items-center justify-center font-bold text-xs">A</div>
+          <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs uppercase tracking-tighter">A</div>
         </div>
       </header>
 
-      {/* Main Content Area */}
       <main className="flex-1 max-w-7xl mx-auto w-full p-8 sm:p-12">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-          {/* Create New Notebook Card */}
           <button 
             onClick={(e) => { e.stopPropagation(); onCreateNotebook(); }}
             className="aspect-[4/3] rounded-[2.5rem] border-2 border-gray-100 dark:border-white/5 bg-white dark:bg-[#0a0a0e] flex flex-col items-center justify-center gap-4 hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-500/10 transition-all group active:scale-[0.98]"
@@ -196,7 +232,6 @@ export const NotesLMHome: React.FC<NotesLMHomeProps> = ({
             <span className="text-xs font-black uppercase tracking-[0.2em] text-gray-700 dark:text-gray-300">Create New Notebook</span>
           </button>
 
-          {/* Existing Notebooks */}
           {notebooks.map(nb => (
             <div 
               key={nb.id}
@@ -229,16 +264,24 @@ export const NotesLMHome: React.FC<NotesLMHomeProps> = ({
                   </button>
                   
                   {activeMenuId === nb.id && (
-                    <div className="absolute bottom-full right-0 mb-2 w-44 bg-white dark:bg-gray-800 border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl z-20 overflow-hidden p-1 animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+                    <div className="absolute bottom-full right-0 mb-2 w-44 bg-white dark:bg-[#121218] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl z-[100] overflow-hidden p-1 animate-in zoom-in-95 notebook-menu-popover" onClick={(e) => e.stopPropagation()}>
                       <button 
-                        onClick={() => { setActiveMenuId(null); setRenameModal({ isOpen: true, id: nb.id, name: nb.title }); }}
+                        onClick={(e) => { 
+                          e.stopPropagation();
+                          setActiveMenuId(null); 
+                          setRenameModal({ isOpen: true, id: nb.id, name: nb.title }); 
+                        }}
                         className="w-full text-left px-3 py-2 text-[10px] font-black uppercase tracking-widest text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 flex items-center gap-2"
                       >
                         <Edit2 size={12} /> Edit Title
                       </button>
                       <div className="h-px bg-gray-100 dark:bg-white/5 my-1" />
                       <button 
-                        onClick={() => { setActiveMenuId(null); setDeleteModal({ isOpen: true, id: nb.id }); }}
+                        onClick={(e) => { 
+                          e.stopPropagation();
+                          setActiveMenuId(null); 
+                          setDeleteModal({ isOpen: true, id: nb.id }); 
+                        }}
                         className="w-full text-left px-3 py-2 text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
                       >
                         <Trash2 size={12} /> Delete Notebook

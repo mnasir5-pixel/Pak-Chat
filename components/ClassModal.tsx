@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, GraduationCap, User, Globe, Plus, MessageSquare, BookOpen, Calculator, Atom, Code, Globe2, Music, Pencil, Palette, BarChart } from 'lucide-react';
+import { X, GraduationCap, User, Globe, Plus, MessageSquare, BookOpen, Calculator, Atom, Code, Globe2, Music, Pencil, Palette } from 'lucide-react';
 import { StudySubject } from '../types';
 
 interface ClassModalProps {
@@ -33,7 +33,6 @@ export const ClassModal: React.FC<ClassModalProps> = ({ isOpen, onClose, onSave,
   const [role, setRole] = useState<'agent' | 'assistant'>('assistant');
   const [language, setLanguage] = useState('English');
   const [icon, setIcon] = useState('📖');
-  const [priority, setPriority] = useState<'High' | 'Medium' | 'Low'>('Medium');
   const [isAddingNewLang, setIsAddingNewLang] = useState(false);
   const [newLangInput, setNewLangInput] = useState('');
 
@@ -45,7 +44,6 @@ export const ClassModal: React.FC<ClassModalProps> = ({ isOpen, onClose, onSave,
       setRole(editingClass.type || 'assistant');
       setLanguage(editingClass.language || 'English');
       setIcon(editingClass.icon || '📖');
-      setPriority(editingClass.priority || 'Medium');
       setIsAddingNewLang(!DEFAULT_LANGUAGES.includes(editingClass.language || ''));
       if (!DEFAULT_LANGUAGES.includes(editingClass.language || '')) {
           setNewLangInput(editingClass.language || '');
@@ -57,7 +55,6 @@ export const ClassModal: React.FC<ClassModalProps> = ({ isOpen, onClose, onSave,
       setRole('assistant');
       setLanguage('English');
       setIcon('📖');
-      setPriority('Medium');
       setIsAddingNewLang(false);
       setNewLangInput('');
     }
@@ -74,8 +71,7 @@ export const ClassModal: React.FC<ClassModalProps> = ({ isOpen, onClose, onSave,
       agentName, 
       type: role,
       language: finalLanguage,
-      icon,
-      priority
+      icon
     });
     onClose();
   };
@@ -125,26 +121,6 @@ export const ClassModal: React.FC<ClassModalProps> = ({ isOpen, onClose, onSave,
                             className={`p-3 rounded-xl border-2 transition-all ${icon === i.char ? 'bg-purple-600 border-purple-500 shadow-lg' : 'bg-gray-50 dark:bg-black border-transparent grayscale opacity-50 hover:opacity-100 hover:grayscale-0'}`}
                         >
                             <span className="text-xl">{i.char}</span>
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] ml-1">Focus Priority</label>
-                <div className="flex items-center gap-2">
-                    {(['High', 'Medium', 'Low'] as const).map((p) => (
-                        <button
-                            key={p}
-                            type="button"
-                            onClick={() => setPriority(p)}
-                            className={`flex-1 py-3 rounded-xl border-2 text-[10px] font-black uppercase tracking-widest transition-all ${
-                                priority === p 
-                                ? 'bg-purple-600 border-purple-500 text-white shadow-lg' 
-                                : 'bg-gray-50 dark:bg-black border-transparent text-gray-400 hover:border-gray-200'
-                            }`}
-                        >
-                            {p}
                         </button>
                     ))}
                 </div>

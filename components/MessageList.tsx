@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState } from 'react';
 import { ChatMessage, LoadingState } from '../types';
 import { ChatBubble } from './ChatBubble';
@@ -11,9 +12,11 @@ interface MessageListProps {
   onRegenerate?: (id: string) => void; 
   onReply?: (content: string) => void;
   onTranslate?: (id: string, targetLang: string) => void;
+  // Fix: Added missing audio handlers used by parent components to satisfy TypeScript
   onReadAloud?: (id: string) => void;
   onAudioOverview?: (id: string) => void;
-  onVideoOverview?: (id: string) => void;
+  onAudioAction?: (id: string, type: 'speak' | 'overview') => void;
+  onDownloadDoc?: (id: string) => void;
   onShare?: (id: string) => void;
   onRemoveAudioNote?: (messageId: string, noteId: string) => void;
   onAudioNotePlayed?: (messageId: string, noteId: string) => void;
@@ -31,9 +34,11 @@ export const MessageList: React.FC<MessageListProps> = ({
   onRegenerate, 
   onReply,
   onTranslate,
+  // Fix: Destructure added handlers and previously ignored handlers
   onReadAloud,
   onAudioOverview,
-  onVideoOverview,
+  onAudioAction,
+  onDownloadDoc,
   onShare,
   onRemoveAudioNote,
   onAudioNotePlayed,
@@ -91,8 +96,12 @@ export const MessageList: React.FC<MessageListProps> = ({
           onRegenerate={onRegenerate}
           onReply={onReply}
           onTranslate={onTranslate}
-          onReadAloud={onReadAloud}
-          onAudioOverview={onAudioOverview}
+          /* Fix: Removed onReadAloud as it is handled within onAudioAction */
+          onAudioAction={onAudioAction || ((id, type) => {
+            if (type === 'speak') onReadAloud?.(id);
+            else if (type === 'overview') onAudioOverview?.(id);
+          })}
+          onDownloadDoc={onDownloadDoc}
           onMindMap={onMindMap}
           onShare={onShare}
           onRemoveAudioNote={onRemoveAudioNote}

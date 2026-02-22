@@ -1,627 +1,446 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { ChatService } from './services/geminiService';
 import { AppSidebar } from './components/AppSidebar';
 import { Header } from './components/Header';
-import { TutorsPage } from './components/TutorsPage';
-import { StudySchoolPage } from './components/StudySchoolPage';
+import { SettingsPage } from './components/SettingsPage';
+import { LibrarianPage } from './components/LibrarianPage';
+import { NotesLMHome } from './components/NotesLMHome';
+import { NasherNotesPage } from './components/NasherNotesPage';
+import { VoiceChatInterface } from './components/VoiceChatInterface';
 import { NotesPage } from './components/NotesPage';
 import { HistoryPage } from './components/HistoryPage';
-import { SettingsPage } from './components/SettingsPage';
-import { NasherNotesPage } from './components/NasherNotesPage';
-import { NotesLMHome } from './components/NotesLMHome';
-import { GeneralNotesChatPage } from './components/GeneralNotesChatPage';
-import { DictionaryModal } from './components/DictionaryModal';
+import { RightDrawer } from './components/RightDrawer';
+import { DictionarySidebar } from './components/DictionarySidebar';
+import { HistorySidebar } from './components/HistorySidebar';
 import { LanguageSelectorModal } from './components/LanguageSelectorModal';
-import { LiveSessionOverlay } from './components/LiveSessionOverlay';
 import { ConfigureChatModal } from './components/ConfigureChatModal';
 import { MessageList } from './components/MessageList';
 import { ChatInput } from './components/ChatInput';
-import { VoiceChatInterface } from './components/VoiceChatInterface';
-import { LibrarianPage } from './components/LibrarianPage';
 import { DashboardPage } from './components/DashboardPage';
-import { LinkConfirmModal } from './components/LinkConfirmModal';
 import { CreateProjectModal } from './components/CreateProjectModal';
 import { ClassModal } from './components/ClassModal';
 import { HireAgentModal } from './components/HireAgentModal';
-import { LoginPage } from './components/LoginPage';
-import { BuilderPage } from './components/BuilderPage';
-import { DEFAULT_TUTORS, DEFAULT_SUBJECTS, SYSTEM_INSTRUCTION } from './constants';
-import { ChatMessage, Tutor, StudySubject, ChatSession, LoadingState, ChatConfig, AudioNote, Project, UserProgress, User } from './types';
+import { TutorsPage } from './components/TutorsPage';
+import { StudySchoolPage } from './components/StudySchoolPage';
+// Added missing LiveSessionOverlay import to fix errors
+import { LiveSessionOverlay } from './components/LiveSessionOverlay';
+import { DEFAULT_TUTORS, DEFAULT_SUBJECTS, SYSTEM_INSTRUCTION, createTutorInstruction } from './constants';
+import { ChatMessage, Tutor, StudySubject, ChatSession, LoadingState, ChatConfig, Project, User, TrashItem, SavedWord } from './types';
+import { BookOpen, Clock, Layers } from 'lucide-react';
+import * as docx from 'docx';
+import saveAs from 'file-saver';
 
-type ViewState = 'dashboard' | 'chat' | 'history' | 'tutors' | 'study-school' | 'settings' | 'notes' | 'builder' | 'notes-lm' | 'general-notes' | 'voice-chat' | 'resource-hub';
-
-const WELCOME_MESSAGE: ChatMessage = {
-  id: 'welcome',
-  role: 'model',
-  content: "Hello! I'm your assistant. How can I help you with your learning today?",
-  timestamp: Date.now(),
+const pcmToWav = (base64Pcm: string, sampleRate = 24000): string => {
+  const binaryString = atob(base64Pcm);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
+  const buffer = new ArrayBuffer(44 + len);
+  const view = new DataView(buffer);
+  view.setUint32(0, 0x52494646, false); 
+  view.setUint32(4, 36 + len, true);   
+  view.setUint32(8, 0x57415645, false); 
+  view.setUint16(20, 1, true);          
+  view.setUint16(22, 1, true);          
+  view.setUint32(24, sampleRate, true); 
+  view.setUint16(34, 16, true);         
+  view.setUint32(36, 0x64617461, false); 
+  view.setUint32(40, len, true);        
+  const dataView = new Uint8Array(buffer, 44);
+  dataView.set(bytes);
+  const blob = new Blob([buffer], { type: 'audio/wav' });
+  return URL.createObjectURL(blob);
 };
 
-const DEFAULT_CONFIG: ChatConfig = { style: 'default', length: 'default' };
+type ViewState = 'dashboard' | 'chat' | 'tutors' | 'study-school' | 'settings' | 'project' | 'history' | 'notes-lm' | 'resource-hub' | 'voice-chat' | 'notes';
 
-const MASTER_USER: User = {
-  email: 'master@operative.ai',
-  name: 'User',
-  verified: true,
-  createdAt: Date.now(),
-  avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Master'
-};
+const WELCOME_MESSAGE: ChatMessage = { id: 'welcome', role: 'model', content: "Hello! I'm your assistant. How can I help you today?", timestamp: Date.now() };
+const MASTER_USER: User = { email: 'master@operative.ai', name: 'User', verified: true, createdAt: Date.now() };
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('pakchat_active_user');
-    return saved ? JSON.parse(saved) : MASTER_USER;
-  });
-
+  const userEmail = MASTER_USER.email;
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isDictionaryOpen, setIsDictionaryOpen] = useState(false);
-  const [isLanguageOpen, setIsLanguageOpen] = useState(false);
-  const [isConfigureModalOpen, setIsConfigureModalOpen] = useState(false);
+  const [activeRightSidebar, setActiveRightSidebar] = useState<'dictionary' | 'history' | null>(null);
+  
+  // Added isLiveOpen state to fix "Cannot find name 'setIsLiveOpen'" errors
   const [isLiveOpen, setIsLiveOpen] = useState(false);
-  
-  const [isAddTutorOpen, setIsAddTutorOpen] = useState(false); 
-  const [isAddClassOpen, setIsAddClassOpen] = useState(false); 
-  const [isAddProjectOpen, setIsAddProjectOpen] = useState(false);
-  const [editingTutor, setEditingTutor] = useState<Tutor | null>(null);
-  const [editingSubject, setEditingSubject] = useState<StudySubject | null>(null);
-  
-  const [activeLink, setActiveLink] = useState<{url: string, title: string} | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const userEmail = currentUser?.email || 'guest';
-
-  const [userProgress, setUserProgress] = useState<UserProgress>(() => {
-    try {
-      const saved = localStorage.getItem(`pakchat_progress_${userEmail}`);
-      return saved ? JSON.parse(saved) : {};
-    } catch { return {}; }
-  });
-
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-      const saved = localStorage.getItem(`pakchat_main_messages_${userEmail}`);
-      return saved ? JSON.parse(saved) : [WELCOME_MESSAGE];
-  });
-  
-  const [mainChatLanguage, setMainChatLanguage] = useState(() => localStorage.getItem(`pakchat_main_lang_${userEmail}`) || 'English');
-  const [mainChatConfig, setMainChatConfig] = useState<ChatConfig>(() => {
-      const saved = localStorage.getItem(`pakchat_main_config_${userEmail}`);
-      return saved ? JSON.parse(saved) : DEFAULT_CONFIG;
-  });
-
-  const [loadingState, setLoadingState] = useState<LoadingState>('idle');
-  
-  const [tutors, setTutors] = useState<Tutor[]>(() => {
-      try {
-          const saved = localStorage.getItem(`pakchat_custom_tutors_${userEmail}`);
-          const base = DEFAULT_TUTORS.map(t => ({ ...t, language: t.language || 'English', config: t.config || DEFAULT_CONFIG }));
-          return saved ? [...base, ...JSON.parse(saved)] : base;
-      } catch { return DEFAULT_TUTORS; }
-  });
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [activeTutorId, setActiveTutorId] = useState<string | null>(null);
-  const [activeTutorMessages, setActiveTutorMessages] = useState<ChatMessage[]>([]);
-  
-  const [subjects, setSubjects] = useState<StudySubject[]>(() => {
-    try {
-        const saved = localStorage.getItem(`pakchat_custom_subjects_${userEmail}`);
-        const base = DEFAULT_SUBJECTS.map(s => ({ ...s, type: 'assistant' as const, language: s.language || 'English', config: s.config || DEFAULT_CONFIG }));
-        return saved ? [...base, ...JSON.parse(saved)] : base;
-    } catch { return DEFAULT_SUBJECTS.map(s => ({ ...s, type: 'assistant' as const })); }
-  });
   const [activeSubjectId, setActiveSubjectId] = useState<string | null>(null);
-  const [activeSubjectMessages, setActiveSubjectMessages] = useState<ChatMessage[]>([]);
-  
-  const [projects, setProjects] = useState<Project[]>(() => {
-    try {
-      const saved = localStorage.getItem(`pakchat_projects_${userEmail}`);
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
 
-  const [sessions, setSessions] = useState<ChatSession[]>(() => {
-    try {
-      const saved = localStorage.getItem(`pakchat_sessions_${userEmail}`);
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
+  const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+  const [isClassModalOpen, setIsClassModalOpen] = useState(false);
+  const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
+  const [editingEntity, setEditingEntity] = useState<any>(null);
 
-  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('light');
+  const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
+  const [mainChatLanguage, setMainChatLanguage] = useState(() => localStorage.getItem(`pakchat_lang`) || 'English');
+  const [loadingState, setLoadingState] = useState<LoadingState>('idle');
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => (localStorage.getItem('pakchat_theme') as any) || 'light');
 
-  const mainChatServiceRef = useRef<ChatService | null>(null);
-  const tutorServiceRef = useRef<ChatService | null>(null);
-  const subjectServiceRef = useRef<ChatService | null>(null);
+  const [sessions, setSessions] = useState<ChatSession[]>(() => JSON.parse(localStorage.getItem(`sessions`) || '[]'));
+  const [projects, setProjects] = useState<Project[]>(() => JSON.parse(localStorage.getItem(`projects`) || '[]'));
+  const [tutors, setTutors] = useState<Tutor[]>(() => JSON.parse(localStorage.getItem(`tutors`) || JSON.stringify(DEFAULT_TUTORS)));
+  const [subjects, setSubjects] = useState<StudySubject[]>(() => JSON.parse(localStorage.getItem(`subjects`) || JSON.stringify(DEFAULT_SUBJECTS)));
+  const [trash, setTrash] = useState<TrashItem[]>(() => JSON.parse(localStorage.getItem(`trash`) || '[]'));
+  const [savedWords, setSavedWords] = useState<SavedWord[]>(() => JSON.parse(localStorage.getItem('pakchat_saved_words') || '[]'));
 
-  const getContextualInstruction = useCallback((title: string, description: string, lang: string, role: 'agent' | 'assistant', base: string, id: string) => {
-    const roleProtocol = role === 'agent' 
-        ? "OPERATIONAL MODE: AGENT. Be proactive, authoritative, and structured. Take full initiative in the curriculum and conduct tests independently."
-        : "OPERATIONAL MODE: ASSISTANT. Be supportive, helpful, and responsive to user cues. Focus on guiding rather than leading.";
-
-    const assessmentStatus = userProgress[id]?.testCompleted ? "Assessment is ALREADY COMPLETED." : "Assessment is NOT COMPLETED. Your first mission is to greet the user and ask for their native language. Once provided, start a 5-question MCQ diagnostic entry test aligned with their level and native language.";
-
-    return `### SYSTEM IDENTITY: ${title}
-### MISSION & DESCRIPTION:
-${description}
-### ASSESSMENT STATUS:
-${assessmentStatus}
-### ROLE PROTOCOL:
-${roleProtocol}
-### INSTRUCTION LANGUAGE:
-Everything you say to the user MUST be in ${lang}. 
-${base}
-`;
-  }, [userProgress]);
+  const chatServiceRef = useRef<ChatService | null>(null);
 
   useEffect(() => {
-    if (!currentUser) return;
-    mainChatServiceRef.current = new ChatService(getContextualInstruction("Pak Chat Core", "General assistance", mainChatLanguage, 'assistant', SYSTEM_INSTRUCTION, 'core'), mainChatConfig);
-    mainChatServiceRef.current.startChatWithHistory(messages.filter(m => m.id !== 'welcome').map(m => ({ role: m.role, content: m.content })));
-    localStorage.setItem(`pakchat_main_lang_${userEmail}`, mainChatLanguage);
-    localStorage.setItem(`pakchat_main_config_${userEmail}`, JSON.stringify(mainChatConfig));
-  }, [currentUser, mainChatConfig, mainChatLanguage, getContextualInstruction, userEmail]);
+    localStorage.setItem(`sessions`, JSON.stringify(sessions));
+    localStorage.setItem(`projects`, JSON.stringify(projects));
+    localStorage.setItem(`tutors`, JSON.stringify(tutors));
+    localStorage.setItem(`subjects`, JSON.stringify(subjects));
+    localStorage.setItem(`trash`, JSON.stringify(trash));
+    localStorage.setItem(`pakchat_saved_words`, JSON.stringify(savedWords));
+    localStorage.setItem('pakchat_theme', theme);
+  }, [sessions, projects, tutors, subjects, trash, savedWords, theme]);
 
   useEffect(() => {
-      if (theme === 'dark') document.documentElement.classList.add('dark');
-      else if (theme === 'light') document.documentElement.classList.remove('dark');
-      else if (theme === 'system') {
-          if (window.matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.classList.add('dark');
-          else document.documentElement.classList.remove('dark');
-      }
-  }, [theme]);
+    const handleSaveWord = (e: any) => {
+        const word = e.detail;
+        setSavedWords(prev => {
+            const exists = prev.some(w => w.hanzi === word.hanzi && w.pinyin === word.pinyin);
+            if (exists) return prev;
+            return [word, ...prev];
+        });
+    };
+    window.addEventListener('pakchat:save_word', handleSaveWord);
+    return () => window.removeEventListener('pakchat:save_word', handleSaveWord);
+  }, []);
 
-  // Handle Automatic AI Greeting for new sessions
-  useEffect(() => {
-    const id = activeTutorId || activeSubjectId;
-    if (id && !userProgress[id]?.testCompleted) {
-        const msgs = activeTutorId ? activeTutorMessages : activeSubjectMessages;
-        if (msgs.length === 0) {
-            handleSendMessage("### INSTRUCTION: Start initialization. Greet the user and ask for their native language to begin the journey.", undefined, true);
-        }
-    }
-  }, [activeTutorId, activeSubjectId]);
+  const initChatService = useCallback((title: string, desc: string, lang: string, mode: 'teacher' | 'assistant' | 'agent' = 'assistant') => {
+    const roleInstr = (mode === 'teacher' || mode === 'agent') ? "Act as a directive teacher and lead the learning session. Be authoritative yet encouraging. Use interactive exercises." : "Act as a supportive assistant.";
+    const instr = `### IDENTITY: ${title}\n### MISSION: ${desc}\n### LANGUAGE: ${lang}\n### ROLE: ${roleInstr}\n\n${SYSTEM_INSTRUCTION}`;
+    chatServiceRef.current = new ChatService(instr);
+  }, []);
 
-  const handleSignOut = () => {
-    setCurrentUser(null);
-    localStorage.removeItem('pakchat_active_user');
-    setCurrentView('dashboard');
-  };
+  const handleSendMessage = async (content: string, attachment?: File) => {
+    if (!chatServiceRef.current || loadingState !== 'idle') return;
 
-  const getActiveSetter = () => {
-    if (currentView === 'tutors' && activeTutorId) return setActiveTutorMessages;
-    if (currentView === 'study-school' && activeSubjectId) return setActiveSubjectMessages;
-    return setMessages;
-  };
+    const audioNotes = attachment && attachment.type.startsWith('audio/') ? [{
+        id: Date.now().toString(),
+        url: URL.createObjectURL(attachment),
+        label: attachment.name || "Voice Note",
+        timestamp: Date.now()
+    }] : undefined;
 
-  const getActiveMessages = () => {
-    if (currentView === 'tutors' && activeTutorId) return activeTutorMessages;
-    if (currentView === 'study-school' && activeSubjectId) return activeSubjectMessages;
-    return messages;
-  };
+    const userMsg: ChatMessage = { 
+        id: Date.now().toString(), 
+        role: 'user', 
+        content: content || (audioNotes ? "Voice Note" : ""), 
+        timestamp: Date.now(), 
+        attachmentUrl: attachment && !audioNotes ? URL.createObjectURL(attachment) : undefined,
+        audioNotes
+    };
 
-  const getActiveService = () => {
-    if (currentView === 'tutors' && activeTutorId) return tutorServiceRef.current;
-    if (currentView === 'study-school' && activeSubjectId) return subjectServiceRef.current;
-    return mainChatServiceRef.current;
-  };
-
-  const handleEdit = (id: string, newContent: string) => {
-    const setter = getActiveSetter();
-    setter(prev => prev.map(m => m.id === id ? { ...m, content: newContent } : m));
-  };
-
-  const handleConfigSave = (newConfig: ChatConfig) => {
-    setMainChatConfig(newConfig);
-    if (mainChatServiceRef.current) {
-      mainChatServiceRef.current.updateConfig(newConfig);
-    }
-  };
-
-  const handleSendMessage = async (content: string, attachment?: File, isSilent = false) => {
-    if ((!content.trim() && !attachment) || loadingState === 'streaming') return;
-    const setter = getActiveSetter();
-    const activeService = getActiveService();
-
-    if (!isSilent) {
-        const userMessage: ChatMessage = { 
-            id: Date.now().toString(), 
-            role: 'user', 
-            content, 
-            timestamp: Date.now(), 
-            attachmentUrl: attachment ? URL.createObjectURL(attachment) : undefined,
-            attachmentType: attachment ? (attachment.type.includes('webm') ? 'audio/webm' : attachment.type) : undefined,
-            attachmentName: attachment ? attachment.name : undefined
-        };
-        setter((prev) => [...prev, userMessage]);
-    }
+    setMessages(prev => [...prev, userMsg]);
     setLoadingState('loading');
+
     try {
         const botMsgId = (Date.now() + 1).toString();
-        setter((prev) => [...prev, { id: botMsgId, role: 'model', content: '', timestamp: Date.now(), isStreaming: true }]);
+        setMessages(prev => [...prev, { id: botMsgId, role: 'model', content: '', timestamp: Date.now(), isStreaming: true }]);
         setLoadingState('streaming');
-        const stream = await activeService!.sendMessageStream(content, attachment);
-        let fullResponse = '';
-        if (stream) { 
-            for await (const chunk of stream) { 
-                fullResponse += chunk; 
-                setter(prev => prev.map(m => m.id === botMsgId ? { ...m, content: fullResponse } : m)); 
-            } 
+        
+        const prompt = audioNotes ? "Please analyze this voice note content." : content;
+        const stream = await chatServiceRef.current.sendMessageStream(prompt, attachment);
+        
+        let full = '';
+        for await (const chunk of stream) { 
+            full += chunk; 
+            setMessages(prev => {
+                const updated = prev.map(m => m.id === botMsgId ? { ...m, content: full } : m);
+                if (activeSessionId) setSessions(s => s.map(sess => sess.id === activeSessionId ? { ...sess, messages: updated, timestamp: Date.now() } : sess));
+                return updated;
+            });
         }
-        if (fullResponse.includes("### HINTS:")) {
-            const [mainText, hintsPart] = fullResponse.split("### HINTS:");
-            const hints = hintsPart.split('\n').map(h => h.replace(/^[-*•\d.]+\s*/, '').trim()).filter(h => h.length > 0).slice(0, 3);
-            setter(prev => prev.map(m => m.id === botMsgId ? { ...m, content: mainText.trim(), hints, isStreaming: false } : m));
-        } else {
-            setter(prev => prev.map(m => m.id === botMsgId ? { ...m, isStreaming: false } : m));
-        }
+        setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, isStreaming: false } : m));
     } catch (e: any) { 
-        setter(prev => prev.map(m => m.isStreaming ? { ...m, content: "Service currently unavailable. Please try again later.", isStreaming: false, isError: true } : m));
+        setMessages(prev => prev.map(m => m.isStreaming ? { ...m, content: "Error: " + e.message, isStreaming: false, isError: true } : m));
     } finally { setLoadingState('idle'); }
   };
 
-  const handleTranslate = async (messageId: string, targetLang: string) => {
-      const setter = getActiveSetter();
-      setter(prev => prev.map(m => m.id === messageId ? { ...m, isProcessing: true, processingLabel: `Translating to ${targetLang}...` } : m));
-      try {
-          const msg = getActiveMessages().find(m => m.id === messageId);
-          if (!msg) return;
-          const translated = await ChatService.translateText(msg.content, targetLang);
-          setter(prev => prev.map(m => m.id === messageId ? { ...m, content: translated, isProcessing: false } : m));
-      } catch (e) { setter(prev => prev.map(m => m.id === messageId ? { ...m, isProcessing: false } : m)); }
+  const handleEditMessage = (id: string, newContent: string) => {
+    setMessages(prev => {
+        const updated = prev.map(m => m.id === id ? { ...m, content: newContent } : m);
+        if (activeSessionId) setSessions(s => s.map(sess => sess.id === activeSessionId ? { ...sess, messages: updated, timestamp: Date.now() } : sess));
+        return updated;
+    });
   };
 
-  const handleReadAloud = async (messageId: string) => {
-      const setter = getActiveSetter();
-      const activeService = getActiveService();
-      setter(prev => prev.map(m => m.id === messageId ? { ...m, isProcessing: true, processingLabel: "Generating voice note..." } : m));
-      try {
-          const msg = getActiveMessages().find(m => m.id === messageId);
-          if (!msg) return;
-          const audioBase64 = await activeService!.generateSpeech(msg.content.replace(/\[Choice:.*?\]|\[Word:.*?\]|#|==/g, '').trim());
-          const newNote: AudioNote = { id: Date.now().toString(), url: audioBase64, label: "Read Aloud", timestamp: Date.now() };
-          setter(prev => prev.map(m => m.id === messageId ? { ...m, audioNotes: [...(m.audioNotes || []), newNote], isProcessing: false } : m));
-      } catch (e) { setter(prev => prev.map(m => m.id === messageId ? { ...m, isProcessing: false } : m)); }
+  const handleNewChat = (type: any = 'chat', meta?: any) => {
+    const sid = Date.now().toString();
+    const newSession: ChatSession = { 
+        id: sid, userEmail, type, 
+        title: "New Session", messages: [WELCOME_MESSAGE], timestamp: Date.now(),
+        projectId: meta?.projectId, tutorId: meta?.tutorId, subjectId: meta?.subjectId 
+    };
+    setSessions(prev => [newSession, ...prev]);
+    setActiveSessionId(sid);
+    setMessages([WELCOME_MESSAGE]);
+    chatServiceRef.current?.startChatWithHistory([]);
   };
 
-  const handleAudioOverview = async (messageId: string) => {
-      const setter = getActiveSetter();
-      const activeService = getActiveService();
-      setter(prev => prev.map(m => m.id === messageId ? { ...m, isProcessing: true, processingLabel: "Synthesizing overview..." } : m));
-      try {
-          const msg = getActiveMessages().find(m => m.id === messageId);
-          if (!msg) return;
-          const overviewStream = await activeService!.sendMessageStream(`Summarize response VERY CONCISELY (MAX 30 words) for an audio recap. Focus on key takeaways. Text: ${msg.content}`);
-          let overviewText = '';
-          for await (const chunk of overviewStream) overviewText += chunk;
-          const audioBase64 = await activeService!.generateSpeech(overviewText.replace(/### HINTS:[\s\S]*/, '').trim());
-          const newNote: AudioNote = { id: Date.now().toString(), url: audioBase64, label: "Audio Overview", timestamp: Date.now() };
-          setter(prev => prev.map(m => m.id === messageId ? { ...m, audioNotes: [...(m.audioNotes || []), newNote], isProcessing: false } : m));
-      } catch (e) { setter(prev => prev.map(m => m.id === messageId ? { ...m, isProcessing: false } : m)); }
-  };
+  const navigateTo = (view: ViewState, id?: string) => {
+    setCurrentView(view); 
+    setIsSidebarOpen(false); 
+    setActiveRightSidebar(null);
+    setActiveTutorId(null); 
+    setActiveSubjectId(null); 
+    setActiveProjectId(null); 
+    setActiveSessionId(null);
 
-  const handleMindMap = async (messageId: string) => {
-      const setter = getActiveSetter();
-      const activeService = getActiveService();
-      setter(prev => prev.map(m => m.id === messageId ? { ...m, isProcessing: true, processingLabel: "Synthesizing Knowledge Map..." } : m));
-      try {
-          const msg = getActiveMessages().find(m => m.id === messageId);
-          if (!msg) return;
-          const prompt = `Generate a hierarchical JSON mind map based on this response. Use exactly this structure: {"topic": "Root", "branches": [{"topic": "Child 1", "branches": [...]}]}. Output ONLY JSON inside block: \`\`\`json:mindmap\n[JSON]\n\`\`\`. Response: ${msg.content}`;
-          const stream = await activeService!.sendMessageStream(prompt);
-          let mindMapCode = '';
-          for await (const chunk of stream) mindMapCode += chunk;
-          setter(prev => prev.map(m => m.id === messageId ? { ...m, content: `${m.content}\n\n${mindMapCode.trim()}`, isProcessing: false } : m));
-      } catch (e) { setter(prev => prev.map(m => m.id === messageId ? { ...m, isProcessing: false } : m)); }
-  };
-
-  const handleRedo = async (messageId: string) => {
-      const setter = getActiveSetter();
-      const msgs = getActiveMessages();
-      const targetIdx = msgs.findIndex(m => m.id === messageId);
-      if (targetIdx === -1) return;
-      const lastUserMsg = [...msgs.slice(0, targetIdx)].reverse().find(m => m.role === 'user');
-      if (!lastUserMsg) return;
-      const newHistory = msgs.slice(0, targetIdx);
-      setter(newHistory);
-      const activeService = getActiveService();
-      await activeService!.startChatWithHistory(newHistory.map(m => ({ role: m.role, content: m.content })));
-      handleSendMessage(lastUserMsg.content, undefined, true);
-  };
-
-  const handleShare = async (id?: string) => {
-    let textToShare = "";
-    if (id) {
-      const msg = getActiveMessages().find(m => m.id === id);
-      if (msg) textToShare = msg.content;
-    } else {
-      textToShare = getActiveMessages().map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n');
-    }
-    if (!textToShare) return;
-    if (navigator.share) {
-      try { await navigator.share({ title: "Pak Chat", text: textToShare }); } catch (err) { console.error("Share failed:", err); }
-    } else {
-      try { await navigator.clipboard.writeText(textToShare); alert("Copied to clipboard!"); } catch (err) { alert("Failed to copy."); }
+    if (view === 'project' && id) {
+      const p = projects.find(x => x.id === id);
+      if (p) { setActiveProjectId(id); initChatService(p.title || p.name, p.description || "", mainChatLanguage); loadSession(id, 'project'); }
+    } else if (view === 'tutors' && id) {
+      const t = tutors.find(x => x.id === id);
+      if (t) { setActiveTutorId(id); initChatService(t.name, t.description || "", t.targetLanguage, t.role); loadSession(id, 'tutor'); }
+    } else if (view === 'study-school' && id) {
+      const s = subjects.find(x => x.id === id);
+      if (s) { setActiveSubjectId(id); initChatService(s.name, s.description || "", s.language, s.type); loadSession(id, 'study-school'); }
+    } else if (view === 'notes-lm' && id) {
+       const nb = sessions.find(s => s.id === id && s.type === 'notes-lm');
+       if (nb) { setActiveSessionId(id); setMessages(nb.messages); initChatService(nb.title, "Source analysis", mainChatLanguage); }
+    } else if (view === 'chat') {
+       initChatService("Assistant", "General Help", mainChatLanguage);
+       loadSession('general', 'chat');
     }
   };
 
-  const handleRemoveAudioNote = (messageId: string, noteId: string) => {
-      const setter = getActiveSetter();
-      setter(prev => prev.map(m => m.id === messageId ? { ...m, audioNotes: m.audioNotes?.filter(n => n.id !== noteId) } : m));
+  const loadSession = (id: string, type: string) => {
+    const match = sessions.find(s => (type === 'project' && s.projectId === id) || (type === 'tutor' && s.tutorId === id) || (type === 'study-school' && s.subjectId === id) || (type === 'chat' && s.type === 'chat'));
+    if (match) { 
+        setActiveSessionId(match.id); 
+        setMessages(match.messages); 
+        chatServiceRef.current?.startChatWithHistory(match.messages.map(m => ({ role: m.role, content: m.content }))); 
+    }
+    else handleNewChat(type as any, { [`${type}Id`]: id });
   };
 
-  const handleStartTest = (type: 'tutor' | 'subject', id: string) => {
-      const activeModule = type === 'tutor' ? tutors.find(t => t.id === id) : subjects.find(s => s.id === id);
-      setUserProgress(prev => ({ ...prev, [id]: { ...(prev[id] || { testCompleted: false, timestamp: Date.now(), completedLessons: [] }), testCompleted: true } }));
-      handleSendMessage(`### INSTRUCTION: Start Entry Test for "${activeModule?.name}". Ask ONE MCQ at a time. Respond in ${activeModule?.language || 'English'}.`, undefined, true);
+  const handleUpdateProfile = (updates: Partial<User>) => {
+    console.log('Update profile:', updates);
   };
 
-  const navigateTo = (view: ViewState, subId?: string) => {
-      setCurrentView(view);
-      setIsSidebarOpen(false);
-      if (view === 'study-school' && subId) {
-          const subject = subjects.find(s => s.id === subId);
-          if (!subject) return;
-          setActiveSubjectId(subId);
-          subjectServiceRef.current = new ChatService(getContextualInstruction(subject.name, subject.description || subject.name, subject.language || 'English', subject.type || 'assistant', SYSTEM_INSTRUCTION, subId), subject.config || DEFAULT_CONFIG);
-          setActiveSubjectMessages([]);
-      } else if (view === 'tutors' && subId) {
-          const tutor = tutors.find(t => t.id === subId);
-          if (!tutor) return;
-          setActiveTutorId(subId);
-          tutorServiceRef.current = new ChatService(getContextualInstruction(tutor.name, tutor.description || tutor.name, tutor.language || 'English', tutor.role || 'assistant', SYSTEM_INSTRUCTION, subId), tutor.config || DEFAULT_CONFIG);
-          setActiveTutorMessages([]);
-      } else if (view === 'notes-lm') {
-          setActiveSessionId(subId || null);
-      }
+  const handleSignOut = () => {
+    setCurrentView('dashboard');
   };
 
-  if (!currentUser) {
-    return <LoginPage onLogin={(user) => { setCurrentUser(user); localStorage.setItem('pakchat_active_user', JSON.stringify(user)); }} />;
-  }
+  const activeHeaderTitle = useMemo(() => {
+    if (currentView === 'project') return projects.find(p => p.id === activeProjectId)?.title || "Project";
+    if (currentView === 'tutors') return tutors.find(t => t.id === activeTutorId)?.name || "Tutor Academy";
+    if (currentView === 'study-school') return subjects.find(s => s.id === activeSubjectId)?.name || "Classroom";
+    if (currentView === 'chat') return "Assistant";
+    return undefined;
+  }, [currentView, activeProjectId, activeTutorId, activeSubjectId, projects, tutors, subjects]);
+
+  const activeHeaderDesc = useMemo(() => {
+    if (currentView === 'tutors') return "Language Mastery Tracker";
+    if (currentView === 'study-school') return "Subject Intelligence Hub";
+    return undefined;
+  }, [currentView]);
+
+  const hideGlobalHeader = ['notes-lm', 'resource-hub', 'voice-chat', 'notes'].includes(currentView);
 
   return (
-    <div className="flex flex-col h-screen bg-gray-100 dark:bg-black overflow-hidden font-sans transition-colors duration-200">
-        <div className="flex flex-1 overflow-hidden">
-            <AppSidebar 
-                isOpen={isSidebarOpen} 
-                onClose={() => setIsSidebarOpen(false)} 
-                currentView={currentView} 
-                activeTutorId={activeTutorId} 
-                activeSubjectId={activeSubjectId} 
-                activeProjectId={null}
-                tutors={tutors} 
-                subjects={subjects} 
-                projects={projects}
-                onNavigate={navigateTo} 
-                onOpenDeployTutor={() => { setEditingTutor(null); setIsAddTutorOpen(true); }} 
-                onOpenCreateClass={() => { setEditingSubject(null); setIsAddClassOpen(true); }} 
-                onOpenCreateProject={() => setIsAddProjectOpen(true)}
-                onEditTutor={(t) => { setEditingTutor(t); setIsAddTutorOpen(true); }}
-                onEditSubject={(s) => { setEditingSubject(s); setIsAddClassOpen(true); }}
-                onOpenHistory={() => navigateTo('history')} 
-                currentTheme={theme} 
-            />
-            <div className="flex-1 flex flex-col h-full relative min-w-0">
-                {['dashboard', 'chat', 'history'].includes(currentView) && (
+    <div className={`flex h-screen bg-white dark:bg-black transition-colors overflow-hidden ${theme === 'dark' ? 'dark' : ''}`}>
+        <AppSidebar 
+            isOpen={isSidebarOpen} 
+            onClose={() => setIsSidebarOpen(false)} 
+            currentView={currentView} 
+            activeTutorId={activeTutorId} 
+            activeSubjectId={activeSubjectId} 
+            activeProjectId={activeProjectId} 
+            tutors={tutors} subjects={subjects} projects={projects} 
+            onNavigate={navigateTo}
+            onOpenCreateProject={() => { setEditingEntity(null); setIsProjectModalOpen(true); }}
+            onOpenCreateClass={() => { setEditingEntity(null); setIsClassModalOpen(true); }}
+            onOpenDeployTutor={() => { setEditingEntity(null); setIsAgentModalOpen(true); }}
+            onEditTutor={(t) => { setEditingEntity(t); setIsAgentModalOpen(true); }}
+            onEditSubject={(s) => { setEditingEntity(s); setIsClassModalOpen(true); }}
+        />
+        
+        <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+            {!hideGlobalHeader ? (
                 <Header 
                     onMenuClick={() => setIsSidebarOpen(true)} 
-                    onNewChat={() => { navigateTo('chat'); setMessages([WELCOME_MESSAGE]); }} 
-                    onConfigureClick={() => setIsConfigureModalOpen(true)} 
-                    onShareClick={() => handleShare()} 
-                    onLanguageClick={() => setIsLanguageOpen(true)}
-                    onDictionaryClick={() => setIsDictionaryOpen(true)} 
-                    onQuizClick={() => handleSendMessage("Give me a context-aware 5-question MCQ quiz based on our learning.", undefined, true)}
-                    messages={messages}
-                    language={currentView === 'chat' ? mainChatLanguage : 'English'}
+                    onNewChat={() => handleNewChat(currentView as any)} 
+                    onConfigureClick={() => {}} 
+                    onShareClick={() => {}} 
+                    onLanguageClick={() => {}} 
+                    onHistoryClick={() => setActiveRightSidebar('history')} 
+                    language={mainChatLanguage}
+                    title={activeHeaderTitle}
+                    description={activeHeaderDesc}
                 />
-                )}
-                <main className="flex-1 overflow-hidden relative">
-                    {currentView === 'dashboard' && <DashboardPage onNavigate={navigateTo} userName={currentUser?.name} />}
-                    {currentView === 'chat' && (
-                        <div className="flex flex-col h-full max-w-4xl mx-auto w-full">
-                            <div className="flex-1 overflow-hidden relative">
-                                <MessageList 
-                                    messages={messages} 
-                                    loadingState={loadingState} 
-                                    onEdit={handleEdit} 
-                                    language={mainChatLanguage} 
-                                    onReply={handleSendMessage} 
-                                    onTranslate={handleTranslate}
-                                    onReadAloud={handleReadAloud}
-                                    onAudioOverview={handleAudioOverview}
-                                    onMindMap={handleMindMap}
-                                    onShare={handleShare}
-                                    onRegenerate={handleRedo}
-                                    onRemoveAudioNote={handleRemoveAudioNote}
-                                />
-                            </div>
-                            <div className="w-full px-4 pb-6 pt-2">
-                                <ChatInput onSend={handleSendMessage} isLoading={loadingState !== 'idle'} onStartLive={() => setIsLiveOpen(true)} language={mainChatLanguage} />
-                            </div>
+            ) : null}
+            
+            <main className="flex-1 overflow-hidden relative flex flex-col">
+                {currentView === 'dashboard' && <DashboardPage onNavigate={navigateTo} />}
+                
+                {['chat', 'project'].includes(currentView) && (
+                    <div className="flex flex-col h-full overflow-hidden">
+                        <div className="flex-1 relative overflow-hidden">
+                            <MessageList messages={messages} loadingState={loadingState} onEdit={handleEditMessage} onReply={handleSendMessage} />
                         </div>
-                    )}
-                    {currentView === 'tutors' && (
+                        <div className="p-4 shrink-0 bg-white dark:bg-black border-t border-gray-100 dark:border-white/5">
+                            <div className="max-w-4xl mx-auto"><ChatInput onSend={handleSendMessage} isLoading={loadingState !== 'idle'} onStartLive={() => setIsLiveOpen(true)} /></div>
+                        </div>
+                    </div>
+                )}
+
+                {currentView === 'tutors' && activeTutorId && (
                     <TutorsPage 
-                        messages={activeTutorMessages} 
-                        loadingState={loadingState} 
-                        activeTutorId={activeTutorId} 
-                        tutors={tutors} 
+                        messages={messages} loadingState={loadingState} 
+                        activeTutorId={activeTutorId} tutors={tutors} 
                         onSelectTutor={(id) => navigateTo('tutors', id)} 
-                        onSendMessage={handleSendMessage} 
-                        onBack={() => navigateTo('dashboard')} 
-                        onStartLive={() => setIsLiveOpen(true)} 
-                        onMenuClick={() => setIsSidebarOpen(true)} 
-                        isAddTutorOpen={false} 
-                        setIsAddTutorOpen={() => {}} 
-                        onAddTutor={() => {}} 
-                        onConfigure={() => setIsConfigureModalOpen(true)} 
-                        onNewSession={() => setActiveTutorMessages([])} 
-                        onDictionaryClick={() => setIsDictionaryOpen(true)} 
-                        onLanguageClick={() => setIsLanguageOpen(true)} 
-                        onShareClick={() => handleShare()} 
-                        onQuizClick={() => handleSendMessage("Conduct a quiz based on our discussion.", undefined, true)} 
-                        isAssessmentCompleted={userProgress[activeTutorId || '']?.testCompleted || false} 
-                        onStartTest={() => handleStartTest('tutor', activeTutorId || '')} 
-                        language={tutors.find(t => t.id === activeTutorId)?.language || 'English'} 
-                        onTranslate={handleTranslate}
-                        onReadAloud={handleReadAloud}
-                        onAudioOverview={handleAudioOverview}
-                        onMindMap={handleMindMap}
-                        onShare={handleShare}
-                        onRegenerate={handleRedo}
-                        onEdit={handleEdit}
-                        onRemoveAudioNote={handleRemoveAudioNote}
+                        onSendMessage={handleSendMessage} onBack={() => navigateTo('dashboard')} 
+                        onStartLive={() => setIsLiveOpen(true)} language={mainChatLanguage} 
+                        isAssessmentCompleted={tutors.find(t => t.id === activeTutorId)?.isAssessmentCompleted || false}
+                        onStartTest={() => setTutors(p => p.map(t => t.id === activeTutorId ? { ...t, isAssessmentCompleted: true } : t))}
+                        onConfigure={()=>{}} onMenuClick={()=>setIsSidebarOpen(true)}
+                        isAddTutorOpen={false} setIsAddTutorOpen={()=>{}} onAddTutor={()=>{}}
+                        onLanguageClick={()=>{}}
+                        onEdit={handleEditMessage}
                     />
-                    )}
-                    {currentView === 'study-school' && (
+                )}
+
+                {currentView === 'study-school' && activeSubjectId && (
                     <StudySchoolPage 
-                        messages={activeSubjectMessages} 
-                        loadingState={loadingState} 
-                        activeSubject={activeSubjectId} 
-                        customSubjects={subjects} 
-                        onSendMessage={handleSendMessage} 
-                        onBack={() => navigateTo('dashboard')} 
-                        onStartLive={() => setIsLiveOpen(true)} 
-                        onMenuClick={() => setIsSidebarOpen(true)} 
-                        onConfigure={() => setIsConfigureModalOpen(true)} 
-                        onNewSession={() => setActiveSubjectMessages([])} 
-                        onDictionaryClick={() => setIsDictionaryOpen(true)} 
-                        onLanguageClick={() => setIsLanguageOpen(true)} 
-                        onShareClick={() => handleShare()} 
-                        onQuizClick={() => handleSendMessage("Start a subject quiz.", undefined, true)} 
-                        isAssessmentCompleted={userProgress[activeSubjectId || '']?.testCompleted || false} 
-                        onStartTest={() => handleStartTest('subject', activeSubjectId || '')} 
-                        language={subjects.find(s => s.id === activeSubjectId)?.language || 'English'} 
-                        onTranslate={handleTranslate}
-                        onReadAloud={handleReadAloud}
-                        onAudioOverview={handleAudioOverview}
-                        onMindMap={handleMindMap}
-                        onShare={handleShare}
-                        onRegenerate={handleRedo}
-                        onEdit={handleEdit}
-                        onRemoveAudioNote={handleRemoveAudioNote}
+                        messages={messages} loadingState={loadingState} 
+                        activeSubject={activeSubjectId} customSubjects={subjects} 
+                        onSendMessage={handleSendMessage} onBack={() => navigateTo('dashboard')} 
+                        language={mainChatLanguage} onConfigure={()=>{}} onMenuClick={()=>setIsSidebarOpen(true)}
+                        isAssessmentCompleted={subjects.find(s => s.id === activeSubjectId)?.isAssessmentCompleted || false}
+                        onStartTest={() => setSubjects(p => p.map(s => s.id === activeSubjectId ? { ...s, isAssessmentCompleted: true } : s))}
+                        onStartLive={() => setIsLiveOpen(true)} onLanguageClick={()=>{}}
+                        onEdit={handleEditMessage}
                     />
-                    )}
-                    {currentView === 'settings' && currentUser && <SettingsPage currentUser={currentUser} onUpdateProfile={(u) => setCurrentUser({...currentUser, ...u})} onSignOut={handleSignOut} currentLanguage={mainChatLanguage} onLanguageChange={setMainChatLanguage} translateLanguage="Urdu" onTranslateLanguageChange={() => {}} currentTheme={theme} onThemeChange={setTheme} onBack={() => navigateTo('dashboard')} />}
-                    {currentView === 'history' && (
-                    <HistoryPage 
-                        sessions={sessions} 
-                        onLoadSession={(id, type) => navigateTo(type as any, id)} 
-                        onDeleteSession={(id, e) => { e.stopPropagation(); setSessions(prev => prev.filter(s => s.id !== id)); }} 
-                        onStartNewChat={() => navigateTo('chat')} 
-                        onRenameSession={(id, title) => setSessions(prev => prev.map(s => s.id === id ? {...s, title} : s))} 
-                        onShareSession={handleShare} 
-                    />
-                    )}
-                    {currentView === 'notes' && <NotesPage onAiAssist={async (a) => { if(!mainChatServiceRef.current) return ''; const s = await mainChatServiceRef.current.sendMessageStream(a); let r = ''; for await (const chunk of s) r += chunk; return r; }} language={mainChatLanguage} onMenuClick={() => setIsSidebarOpen(true)} />}
-                    {currentView === 'voice-chat' && (
-                        <VoiceChatInterface 
-                            messages={[]} 
-                            loadingState="idle" 
-                            onSendMessage={() => {}} 
-                            onRegenerate={handleRedo} 
-                            onTranslate={handleTranslate} 
-                            onStartLive={() => setIsLiveOpen(true)} 
-                            onBack={() => navigateTo('dashboard')} 
-                            onMenuClick={() => setIsSidebarOpen(true)} 
+                )}
+
+                {currentView === 'notes-lm' && (
+                    activeSessionId ? (
+                        <NasherNotesPage 
                             language={mainChatLanguage} 
-                            onLanguageClick={() => setIsLanguageOpen(true)}
-                            onReadAloud={handleReadAloud}
-                            onAudioOverview={handleAudioOverview}
-                            onMindMap={handleMindMap}
-                            onShare={handleShare}
-                            onRemoveAudioNote={handleRemoveAudioNote}
+                            session={sessions.find(s => s.id === activeSessionId)!} 
+                            onUpdateSession={(id, upd) => setSessions(prev => prev.map(s => s.id === id ? { ...s, ...upd } : s))} 
+                            onBack={() => setActiveSessionId(null)} 
+                            onStartLive={() => setIsLiveOpen(true)} 
                         />
-                    )}
-                    {currentView === 'resource-hub' && <LibrarianPage messages={[]} loadingState="idle" onSendMessage={() => {}} onBack={() => navigateTo('dashboard')} onMenuClick={() => setIsSidebarOpen(true)} onShareClick={() => handleShare()} onConfigure={() => setIsConfigureModalOpen(true)} onLanguageClick={() => setIsLanguageOpen(true)} onNewSession={() => {}} language={mainChatLanguage} onTranslate={handleTranslate} onReadAloud={handleReadAloud} onAudioOverview={handleAudioOverview} onMindMap={handleMindMap} onShare={handleShare} onRegenerate={handleRedo} />}
-                    {currentView === 'notes-lm' && (
-                        activeSessionId ? (
-                            <NasherNotesPage 
-                                language={mainChatLanguage} 
-                                session={sessions.find(s => s.id === activeSessionId) || { id: activeSessionId, userEmail: userEmail, type: 'notes-lm', title: 'New Notebook', messages: [], timestamp: Date.now() }} 
-                                onUpdateSession={(id, updates) => setSessions(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))} 
-                                onBack={() => setActiveSessionId(null)} 
-                                onStartLive={() => setIsLiveOpen(true)} 
-                            />
-                        ) : (
-                            <NotesLMHome 
-                                notebooks={sessions.filter(s => s.type === 'notes-lm')} 
-                                onOpenNotebook={(id) => setActiveSessionId(id)} 
-                                onCreateNotebook={() => { const id = Date.now().toString(); setSessions(p => [...p, { id, userEmail, type: 'notes-lm', title: 'New Notebook', messages: [], timestamp: Date.now() }]); setActiveSessionId(id); }} 
-                                onDeleteNotebook={(id) => setSessions(prev => prev.filter(s => s.id !== id))} 
-                                onRenameNotebook={(id, title) => setSessions(prev => prev.map(s => s.id === id ? { ...s, title } : s))} 
-                                language={mainChatLanguage} 
-                                onLanguageChange={setMainChatLanguage} 
-                                theme={theme} 
-                                onThemeChange={setTheme} 
-                                onMenuClick={() => setIsSidebarOpen(true)} 
-                            />
-                        )
-                    )}
-                    {currentView === 'general-notes' && <GeneralNotesChatPage language={mainChatLanguage} onMenuClick={() => setIsSidebarOpen(true)} onBack={() => navigateTo('dashboard')} onTranslate={handleTranslate} onReadAloud={handleReadAloud} onAudioOverview={handleAudioOverview} onMindMap={handleMindMap} onShare={handleShare} onRegenerate={handleRedo} />}
-                </main>
-            </div>
+                    ) : (
+                        <NotesLMHome 
+                            notebooks={sessions.filter(s => s.type === 'notes-lm')} 
+                            onOpenNotebook={(id) => navigateTo('notes-lm', id)}
+                            onCreateNotebook={() => handleNewChat('notes-lm')}
+                            onDeleteNotebook={(id) => setSessions(prev => prev.filter(s => s.id !== id))}
+                            onRenameNotebook={(id, title) => setSessions(prev => prev.map(s => s.id === id ? { ...s, title } : s))}
+                            language={mainChatLanguage} onLanguageChange={setMainChatLanguage}
+                            theme={theme} onThemeChange={setTheme} onMenuClick={() => setIsSidebarOpen(true)}
+                            notesLmConfig={{ style: 'default', length: 'default', mode: 'assistant' }}
+                            onNotesLmConfigChange={() => {}}
+                        />
+                    )
+                )}
+
+                {currentView === 'resource-hub' && (
+                    <LibrarianPage 
+                        messages={[]} loadingState="idle" 
+                        onSendMessage={()=>{}} onBack={()=>navigateTo('dashboard')} 
+                        onMenuClick={()=>setIsSidebarOpen(true)} onShareClick={()=>{}} 
+                        onConfigure={()=>{}} onLanguageClick={()=>{}} 
+                        onNewSession={()=>{}} language={mainChatLanguage}
+                    />
+                )}
+
+                {currentView === 'voice-chat' && (
+                    <VoiceChatInterface 
+                        messages={[]} loadingState="idle" 
+                        onSendMessage={handleSendMessage} onRegenerate={()=>{}} onTranslate={()=>{}} 
+                        onStartLive={() => setIsLiveOpen(true)} onBack={()=>navigateTo('dashboard')} 
+                        onMenuClick={()=>setIsSidebarOpen(true)} language={mainChatLanguage} 
+                        onLanguageClick={()=>{}} 
+                    />
+                )}
+
+                {currentView === 'notes' && (
+                    <NotesPage 
+                        onAiAssist={async (a, c) => ""} 
+                        language={mainChatLanguage} 
+                        onMenuClick={()=>setIsSidebarOpen(true)} 
+                    />
+                )}
+
+                {currentView === 'settings' && (
+                    <SettingsPage 
+                        currentUser={MASTER_USER} onUpdateProfile={handleUpdateProfile} 
+                        onSignOut={handleSignOut} currentLanguage={mainChatLanguage} 
+                        onLanguageChange={setMainChatLanguage} translateLanguage="Urdu" 
+                        onTranslateLanguageChange={()=>{}} currentTheme={theme} 
+                        onThemeChange={setTheme} onBack={()=>navigateTo('dashboard')} 
+                    />
+                )}
+
+                {currentView === 'history' && (
+                    <HistoryPage 
+                        sessions={sessions} onLoadSession={(id, type) => navigateTo(type as any, id)} 
+                        onDeleteSession={(id) => setSessions(prev => prev.filter(s => s.id !== id))} 
+                        onStartNewChat={() => handleNewChat()} onRenameSession={()=>{}} onShareSession={()=>{}} 
+                    />
+                )}
+            </main>
         </div>
 
-        {isDictionaryOpen && <DictionaryModal isOpen={isDictionaryOpen} onClose={() => setIsDictionaryOpen(false)} />}
-        {isLanguageOpen && <LanguageSelectorModal isOpen={isLanguageOpen} onClose={() => setIsLanguageOpen(false)} currentLanguage={currentView === 'chat' ? mainChatLanguage : 'English'} onSelect={(lang) => { if(currentView === 'chat') setMainChatLanguage(lang); }} />}
-        
-        {isAddTutorOpen && (
-            <HireAgentModal 
-                isOpen={isAddTutorOpen} 
-                onClose={() => setIsAddTutorOpen(false)} 
-                editingAgent={editingTutor}
-                onSave={(data) => {
-                    if (editingTutor) { setTutors(prev => prev.map(t => t.id === editingTutor.id ? { ...t, ...data } : t)); } 
-                    else { setTutors(prev => [...prev, { ...data, id: Date.now().toString(), icon: '👤', color: 'bg-teal-50', isCustom: true } as Tutor]); }
-                }}
-            />
-        )}
+        <CreateProjectModal 
+            isOpen={isProjectModalOpen} onClose={() => setIsProjectModalOpen(false)} 
+            onCreate={(n, t, d, h, tag) => {
+                const newP = { id: Date.now().toString(), name: n, title: t, description: d, hashtags: h, tag, timestamp: Date.now() };
+                setProjects(prev => [...prev, newP]);
+                setIsProjectModalOpen(false);
+            }} 
+            existingProjects={projects} onSelectProject={(id) => navigateTo('project', id)}
+        />
 
-        {isAddClassOpen && (
-            <ClassModal 
-                isOpen={isAddClassOpen} 
-                onClose={() => setIsAddClassOpen(false)} 
-                editingClass={editingSubject}
-                onSave={(data) => {
-                    if (editingSubject) { setSubjects(prev => prev.map(s => s.id === editingSubject.id ? { ...s, ...data } : s)); } 
-                    else { setSubjects(prev => [...prev, { ...data, id: Date.now().toString(), icon: '🎓', color: 'bg-purple-50', isCustom: true } as StudySubject]); }
-                }}
-            />
-        )}
+        <ClassModal 
+            isOpen={isClassModalOpen} onClose={() => setIsClassModalOpen(false)} 
+            editingClass={editingEntity}
+            onSave={(data) => {
+                if (editingEntity) setSubjects(prev => prev.map(s => s.id === editingEntity.id ? { ...s, ...data } : s));
+                else setSubjects(prev => [...prev, { id: Date.now().toString(), ...data } as any]);
+                setIsClassModalOpen(false);
+            }} 
+        />
 
-        {isAddProjectOpen && (
-            <CreateProjectModal 
-                isOpen={isAddProjectOpen} 
-                onClose={() => setIsAddProjectOpen(false)} 
-                existingProjects={projects}
-                onSelectProject={(id) => navigateTo('history', id)}
-                onCreate={(name, tag) => { setProjects(prev => [...prev, { id: Date.now().toString(), name, tag, timestamp: Date.now() }]); setIsAddProjectOpen(false); }}
-            />
-        )}
+        <HireAgentModal 
+            isOpen={isAgentModalOpen} onClose={() => setIsAgentModalOpen(false)} 
+            editingAgent={editingEntity}
+            onSave={(data) => {
+                if (editingEntity) setTutors(prev => prev.map(t => t.id === editingEntity.id ? { ...t, ...data } : t));
+                else setTutors(prev => [...prev, { id: Date.now().toString(), ...data } as any]);
+                setIsAgentModalOpen(false);
+            }} 
+        />
 
-        {isConfigureModalOpen && (
-          <ConfigureChatModal 
-            isOpen={isConfigureModalOpen} 
-            onClose={() => setIsConfigureModalOpen(false)} 
-            config={mainChatConfig} 
-            onSave={handleConfigSave} 
-          />
-        )}
+        <RightDrawer isOpen={activeRightSidebar === 'history'} onClose={() => setActiveRightSidebar(null)} title="Context History" icon={<Clock size={18} />}>
+            <HistorySidebar sessions={sessions} activeId={activeSessionId} onLoadSession={(id, type) => navigateTo(type as any, id)} />
+        </RightDrawer>
 
+        {/* Added missing Live Talk Overlay renderer */}
         {isLiveOpen && (
           <LiveSessionOverlay 
-            onClose={(t) => { setIsLiveOpen(false); if(t.length > 0) getActiveSetter()(prev => [...prev, ...t]); }} 
-            language={mainChatLanguage} 
-            systemInstruction={getContextualInstruction("Live Talk", "Low-latency voice conversation", mainChatLanguage, 'assistant', SYSTEM_INSTRUCTION, 'live')} 
-            initialHistory={getActiveMessages()} 
+            onClose={(transcript) => {
+              setIsLiveOpen(false);
+              if (transcript.length > 0) {
+                setMessages(prev => [...prev, ...transcript]);
+              }
+            }}
+            language={mainChatLanguage}
+            systemInstruction={SYSTEM_INSTRUCTION}
+            initialHistory={messages}
           />
-        )}
-
-        {activeLink && (
-            <LinkConfirmModal 
-                isOpen={!!activeLink} 
-                onClose={() => setActiveLink(null)} 
-                url={activeLink.url} 
-                title={activeLink.title} 
-            />
         )}
     </div>
   );

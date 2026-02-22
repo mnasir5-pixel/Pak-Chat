@@ -10,9 +10,17 @@ export interface User {
   isBlocked?: boolean;
 }
 
+export interface TrashItem {
+  id: string;
+  type: 'session' | 'notebook' | 'note' | 'project' | 'subject' | 'tutor';
+  title: string;
+  deletedAt: number;
+  originalData: any;
+}
+
 export interface AudioNote {
   id: string;
-  url: string; // This stores the base64 raw PCM string or blob URL
+  url: string; 
   label: string;
   timestamp: number;
   isPlayed?: boolean;
@@ -34,86 +42,79 @@ export interface ChatMessage {
   hints?: string[];
 }
 
-export interface Asset {
-  id: string;
-  type: 'report' | 'flashcards' | 'guide' | 'quiz' | 'infographic' | 'slides' | 'audio' | 'video' | 'mindmap' | 'idea';
-  name: string;
-  status: 'processing' | 'ready';
-  timestamp: number;
-  content?: string;
-  config?: {
-    language?: string;
-    level?: string;
-    detail?: string;
-    count?: string;
-  };
+export interface ChatConfig {
+  style: 'default' | 'learning' | 'custom';
+  length: 'default' | 'short' | 'long';
+  // Fixed: Added 'agent' to mode union type
+  mode: 'teacher' | 'assistant' | 'agent';
 }
 
+export interface Project {
+  id: string;
+  name: string;
+  title?: string;
+  description?: string;
+  hashtags?: string[];
+  tag?: string;
+  timestamp: number;
+}
+
+// Added missing Source interface
 export interface Source {
   id: string;
   name: string;
+  // Fix: Added 'video' to the union type to resolve assignment error in NasherNotesPage
   type: 'pdf' | 'doc' | 'url' | 'youtube' | 'text' | 'image' | 'audio' | 'video';
   content?: string;
   timestamp: number;
   selected: boolean;
 }
 
-export interface ChatConfig {
-  style: 'default' | 'learning' | 'custom';
-  length: 'default' | 'short' | 'long';
-}
-
-export interface Project {
+// Added missing Asset interface
+export interface Asset {
   id: string;
+  type: 'report' | 'flashcards' | 'infographic' | 'quiz' | 'guide' | 'slides' | 'audio' | 'video' | 'mindmap';
   name: string;
-  tag?: string;
+  status: 'processing' | 'ready' | 'error';
+  content?: string;
   timestamp: number;
-}
-
-export interface ModuleProgress {
-  testCompleted: boolean;
-  proficiencyLevel?: string;
-  completedLessons: string[];
-  lastCheckpoint?: string;
-  timestamp: number;
-}
-
-export interface UserProgress {
-  [moduleId: string]: ModuleProgress;
+  config?: {
+    language?: string;
+    level?: string;
+    detail?: string;
+  };
 }
 
 export interface ChatSession {
   id: string;
   userEmail: string; 
-  type: 'chat' | 'tutor' | 'english-tutor' | 'study-school' | 'language-tutor' | 'voice-chat' | 'notes-lm' | 'resource-hub' | 'general-notes';
+  // Fixed: Added 'voice-chat' and other missing session types to support the navigation hub logic
+  type: 'chat' | 'tutor' | 'study-school' | 'notes-lm' | 'resource-hub' | 'project' | 'voice-chat' | 'english-tutor' | 'language-tutor';
   title: string;
   projectId?: string;
   subjectId?: string;
   tutorId?: string;
   messages: ChatMessage[];
   timestamp: number;
-  createdAt?: number;
   config?: ChatConfig;
-  language?: string;
+  // Added optional sources and assets to session
   sources?: Source[];
   assets?: Asset[];
 }
-
-export type LoadingState = 'idle' | 'loading' | 'streaming';
 
 export interface StudySubject {
     id: string;
     name: string;
     icon: string;
     color: string;
-    instruction?: string;
-    isCustom?: boolean;
-    type?: 'agent' | 'assistant';
-    agentName?: string;
     description?: string;
-    language?: string;
-    config?: ChatConfig;
-    priority?: 'High' | 'Medium' | 'Low';
+    type: 'agent' | 'assistant';
+    language: string;
+    isCustom?: boolean;
+    isAssessmentCompleted?: boolean;
+    // Added missing instruction and agentName
+    instruction?: string;
+    agentName?: string;
 }
 
 export interface Tutor {
@@ -122,15 +123,26 @@ export interface Tutor {
     targetLanguage: string;
     icon: string;
     color: string;
-    instruction?: string;
-    isCustom?: boolean;
     description?: string;
-    role?: 'agent' | 'assistant';
-    language?: string;
-    config?: ChatConfig;
-    priority?: 'High' | 'Medium' | 'Low';
+    role: 'agent' | 'assistant';
+    experience?: string;
+    proficiency?: string;
+    isCustom?: boolean;
+    isAssessmentCompleted?: boolean;
+    // Added missing instruction property
+    instruction?: string;
 }
 
+// Added missing SavedWord interface
+export interface SavedWord {
+  hanzi: string;
+  pinyin: string;
+  meaning: string;
+  urdu_meaning?: string;
+  timestamp: number;
+}
+
+// Added missing StudioItem interface
 export interface StudioItem {
   id: string;
   type: 'image' | 'video';
@@ -139,10 +151,4 @@ export interface StudioItem {
   timestamp: number;
 }
 
-export interface SavedWord {
-    hanzi: string;
-    pinyin: string;
-    meaning: string;
-    urdu_meaning?: string;
-    timestamp: number;
-}
+export type LoadingState = 'idle' | 'loading' | 'streaming';
